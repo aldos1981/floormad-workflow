@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Projects</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen p-8 flex flex-col items-center">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-xl p-8 shadow-lg border border-gray-700">
+        <h1 class="text-2xl font-bold mb-6 text-blue-400">API Verification</h1>
+        <button onclick="check()"
+            class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg transition mb-6 shadow-lg shadow-blue-900/20 font-medium">
+            Check Projects
+        </button>
+        <div class="bg-gray-950 p-4 rounded-lg border border-gray-700 overflow-auto max-h-96 custom-scrollbar">
+            <pre id="output" class="text-xs font-mono text-green-400 whitespace-pre-wrap"></pre>
+        </div>
+    </div>
+    <script>
+        async function check() {
+            try {
+                const res = await fetch('/api/projects');
+                const data = await res.json();
+                document.getElementById('output').innerText = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('output').innerText = "Error: " + e.message;
+            }
+        }
+    </script>
+</body>
+
+</html>

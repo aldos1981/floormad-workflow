@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floormad Automation Manager</title>
+    <!-- Configuration Modal (New) -->
+    <!-- ... (rest of modal) ... -->
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/drawflow/dist/drawflow.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/app.v2.js?v=20260213_fix_events_v3"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #4B5563;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6B7280;
+        }
+
+        /* Drawflow Custom Dark Theme */
+        .drawflow .drawflow-node {
+            background: #1F2937;
+            border: 1px solid #374151;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            color: #E5E7EB;
+            border-radius: 0.5rem;
+            width: 200px;
+        }
+
+        .drawflow .drawflow-node.selected {
+            background: #1F2937;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 2px #3B82F6;
+        }
+
+        .drawflow .drawflow-node .input,
+        .drawflow .drawflow-node .output {
+            background: #4b5563;
+            width: 16px;
+            /* Larger */
+            height: 16px;
+            /* Larger */
+            border: 2px solid #6b7280;
+            /* Thicker border */
+            border-radius: 50%;
+            cursor: crosshair;
+        }
+
+        .drawflow .drawflow-node .input:hover,
+        .drawflow .drawflow-node .output:hover {
+            background: #3b82f6;
+            border-color: #ffffff;
+            transform: scale(1.2);
+            /* Pop effect */
+        }
+
+        /* Connection Lines */
+        .drawflow .connection .main-path {
+            stroke-width: 4px;
+            /* Thicker lines */
+            stroke: #6b7280;
+        }
+
+        .drawflow .connection:hover .main-path {
+            stroke: #3b82f6;
+            cursor: pointer;
+        }
+
+        .drawflow-delete {
+            background: #EF4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            text-align: center;
+            line-height: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            display: none;
+        }
+
+        .drawflow-node:hover .drawflow-delete {
+            display: block;
+        }
+
+        .drawflow .title-box {
+            border-bottom: 1px solid #374151;
+            padding: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem 0.5rem 0 0;
+        }
+
+        .drawflow .drawflow-node .box {
+            padding: 10px;
+            font-size: 0.75rem;
+            color: #9ca3af;
+        }
+
+        .drawflow .connection .main-path {
+            stroke: #6b7280;
+            stroke-width: 2px;
+        }
+
+        .drawflow .drawflow-node .input,
+        .drawflow .drawflow-node .output {
+            width: 10px;
+            height: 10px;
+            background: #9ca3af;
+            border: 1px solid #4b5563;
+        }
+
+        /* Horizontal Flow Tweaks */
+        .drawflow .drawflow-node .inputs {
+            float: left;
+            top: 50%;
+            transform: translateY(-50%);
+            left: -15px;
+        }
+
+        .drawflow .drawflow-node .outputs {
+            float: right;
+            top: 50%;
+            transform: translateY(-50%);
+            right: -15px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white font-sans antialiased h-screen flex flex-col overflow-hidden">
+
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <h1
+                    class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
+                    Floormad Manager
+                </h1>
+                <span class="text-xs font-mono bg-gray-800 px-1.5 py-0.5 rounded text-gray-400 border border-gray-700"
+                    id="app-version">v...</span>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="openChangelog()"
+                    class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg transition border border-gray-600 flex items-center gap-2">
+                    📜 Changelog
+                </button>
+                <button onclick="openSettings()"
+                    class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded-lg transition border border-gray-600">
+                    ⚙️ Settings
+                </button>
+                <button onclick="openModal()"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition shadow-lg shadow-blue-900/20">
+                    + New Project
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-6">
+
+        <!-- Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h3 class="text-gray-400 text-sm uppercase tracking-wider">Active Projects</h3>
+                <p class="text-3xl font-bold mt-2" id="project-count">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h3 class="text-gray-400 text-sm uppercase tracking-wider">Total Leads Processed</h3>
+                <p class="text-3xl font-bold mt-2 text-emerald-400">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+                <div class="flex justify-between items-start">
+                    <h3 class="text-gray-400 text-sm uppercase tracking-wider">System Status</h3>
+                    <span
+                        class="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
+                </div>
+                <p class="text-3xl font-bold mt-2 text-gray-100">Online</p>
+            </div>
+        </div>
+
+        <!-- Projects Grid -->
+        <h2 class="text-xl font-semibold mb-4 text-gray-200">Projects</h2>
+        <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Project Card Template -->
+            <!-- Populated via JS -->
+        </div>
+
+    </main>
+
+    <!-- Create Project Modal -->
+    <div id="project-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div
+            class="bg-gray-800 rounded-xl p-8 max-w-lg w-full border border-gray-700 shadow-2xl transform transition-all scale-100">
+            <h2 class="text-2xl font-bold mb-6 text-white">Create New Project</h2>
+            <form id="create-project-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Project Name</label>
+                    <input type="text" id="p-name"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition text-white"
+                        placeholder="e.g. Agrirock 2024" required>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Description</label>
+                    <input type="text" id="p-desc"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition text-white"
+                        placeholder="Optional description">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Google Sheet ID</label>
+                    <input type="text" id="p-sheet"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition text-white"
+                        placeholder="18mrbQlo...">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Service Account JSON</label>
+                    <textarea id="p-json" rows="4"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none transition text-gray-300"
+                        placeholder="{ 'type': 'service_account'... }"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal()"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-gray-300">Cancel</button>
+                    <button type="submit"
+                        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-lg transition shadow-lg">Create
+                        Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Configuration Modal (New) -->
+    <div id="config-modal"
+        class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 backdrop-blur-md overflow-hidden">
+        <div
+            class="bg-gray-800 w-full h-full flex flex-col md:max-w-[95vw] md:h-[90vh] md:rounded-xl md:border md:border-gray-700 shadow-2xl relative">
+
+            <!-- Header -->
+            <div class="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-6 shrink-0 z-20">
+                <div class="flex items-center gap-4">
+                    <button onclick="closeConfig()" class="text-gray-400 hover:text-white transition">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                    <h2 class="text-xl font-bold flex items-center gap-2 text-white">
+                        <span id="conf-project-name" class="truncate max-w-xs">Project Config</span>
+                    </h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="saveConfig().then(() => showStatus('success', 'Saved', 'Configuration saved'))"
+                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-lg shadow-blue-500/20 text-white">
+                        <span id="save-spinner" class="animate-spin hidden">⟳</span>
+                        <span>Save Config</span>
+                    </button>
+                    <!-- Workflow Toolbar (Visual only when Workflow tab active, but here for now) -->
+                    <div id="workflow-toolbar"
+                        class="hidden flex items-center gap-2 border-l border-gray-700 pl-4 ml-2">
+                        <button onclick="saveConfig().then(() => showStatus('success', 'Saved', 'Workflow saved'))"
+                            class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-xs font-medium text-white transition">
+                            <span>💾 Save Workflow</span>
+                        </button>
+                        <button onclick="showOutput()"
+                            class="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 px-3 py-2 rounded-lg text-xs font-medium text-white transition">
+                            <span>👁️ Output</span>
+                        </button>
+                    </div>
+
+                    <button onclick="runWorkflow()"
+                        class="flex items-center gap-2 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-sm font-medium transition shadow-lg shadow-green-500/20 text-white shadow-lg shadow-green-500/20">
+                        <span id="run-spinner" class="animate-spin hidden">⚡</span>
+                        <span>Run Workflow</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Context Provider (Layout) -->
+            <div class="flex-1 flex overflow-hidden relative">
+
+                <!-- Left Navigation -->
+                <div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0 z-10">
+                    <nav class="flex-1 p-4 space-y-1">
+                        <button id="btn-tab-general" onclick="switchTab('tab-general')"
+                            class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-blue-400 bg-gray-900/50 mb-4 transition border-l-2 border-blue-500">
+                            General Settings
+                        </button>
+                        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-6 px-3">
+                            Configuration</div>
+                        <button id="btn-tab-products" onclick="switchTab('tab-products')"
+                            class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition border-l-2 border-transparent">
+                            Products & Prices
+                        </button>
+                        <button id="btn-tab-media" onclick="switchTab('tab-media')"
+                            class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition border-l-2 border-transparent">
+                            Media Library
+                        </button>
+                        <button id="btn-tab-integrations" onclick="switchTab('tab-integrations')"
+                            class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition border-l-2 border-transparent">
+                            Integrations (SMTP/WA)
+                        </button>
+                        <div class="h-px bg-gray-700 my-4"></div>
+                        <button id="btn-tab-workflow" onclick="switchTab('tab-workflow')"
+                            class="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition group flex justify-between items-center border-l-2 border-transparent">
+                            <span>Workflow Builder</span>
+                            <span
+                                class="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/20">CORE</span>
+                        </button>
+                        <!-- Legacy AI Tab Hidden -->
+                        <button id="btn-tab-ai" onclick="switchTab('tab-ai')" class="hidden">AI</button>
+                    </nav>
+                </div>
+
+                <!-- Main Content Area -->
+                <div class="flex-1 bg-gray-900 relative overflow-hidden flex flex-col">
+
+                    <!-- TAB: GENERAL -->
+                    <div id="tab-general" class="absolute inset-0 p-8 overflow-y-auto custom-scrollbar">
+                        <h2 class="text-2xl font-bold text-white mb-6">General Settings</h2>
+                        <div class="space-y-6 max-w-2xl">
+                            <!-- ID (Hidden/Readonly) -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-400 mb-1">Project ID</label>
+                                <input id="c-id" type="text" readonly
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-gray-500 font-mono text-xs cursor-not-allowed">
+                            </div>
+
+                            <!-- Name -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Project Name</label>
+                                <input id="c-name" type="text"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                            </div>
+
+                            <!-- Description -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                                <textarea id="c-desc" rows="3"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"></textarea>
+                            </div>
+
+                            <!-- Status -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                                <select id="c-status"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="active">Active</option>
+                                    <option value="paused">Paused</option>
+                                    <option value="archived">Archived</option>
+                                </select>
+                            </div>
+
+                            <div class="h-px bg-gray-800 my-6"></div>
+
+                            <!-- Google Sheets Config -->
+                            <h3 class="text-lg font-semibold text-white mb-4">Google Integration</h3>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Google Sheet ID</label>
+                                <input id="c-sheet" type="text"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                                <p class="text-xs text-gray-500 mt-1">Found in the URL of your Google Sheet.</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Service Account JSON</label>
+                                <textarea id="c-json" rows="4"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder='{"type": "service_account", ...}'></textarea>
+                                <p class="text-xs text-gray-500 mt-1" id="c-sa-email"></p>
+                            </div>
+
+                            <!-- Cron -->
+                            <div class="mt-6">
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Cron Expression
+                                    (Schedule)</label>
+                                <input id="c-cron" type="text"
+                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-sm"
+                                    placeholder="0 9 * * *">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: PRODUCTS -->
+                    <div id="tab-products"
+                        class="hidden absolute inset-0 p-8 overflow-y-auto bg-gray-900 custom-scrollbar">
+                        <div class="max-w-4xl mx-auto">
+                            <div class="flex justify-between items-center mb-6">
+                                <h3 class="text-lg font-bold text-white">Product Catalog & Prices</h3>
+                                <div class="flex gap-2">
+                                    <button onclick="viewPriceCache()"
+                                        class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-sm transition">View
+                                        Cached Prices</button>
+                                    <button onclick="addProduct()"
+                                        class="bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded text-sm transition shadow-lg shadow-green-900/20">+
+                                        Add Product</button>
+                                </div>
+                            </div>
+
+                            <!-- Price Sync Section -->
+                            <div class="bg-gray-800/50 rounded-xl border border-gray-700 p-6 mb-8">
+                                <h4 class="text-white font-medium mb-4 flex items-center gap-2">
+                                    <span class="bg-emerald-500/10 text-emerald-400 p-1 rounded">💲</span> Price List
+                                    Sync
+                                </h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-400 mb-1">Sheet ID
+                                            (Optional)</label>
+                                        <input type="text" id="c-price-url"
+                                            placeholder="If different from main sheet..."
+                                            class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-xs">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-400 mb-1">Range</label>
+                                        <input type="text" id="c-price-range"
+                                            class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-xs"
+                                            value="Foglio1!A:G">
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex gap-4">
+                                    <button id="btn-sync-prices" onclick="syncPrices()"
+                                        class="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm text-gray-200 transition border border-gray-600">
+                                        <span id="sync-spinner" class="animate-spin hidden mr-2">⟳</span>
+                                        Req. Sync from Google
+                                    </button>
+                                    <div class="relative flex-1">
+                                        <input type="file" id="price-upload-file" accept=".xlsx,.csv" class="hidden"
+                                            onchange="uploadPriceList()">
+                                        <button id="btn-upload"
+                                            onclick="document.getElementById('price-upload-file').click()"
+                                            class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded text-sm text-white transition flex justify-center items-center gap-2 shadow-lg shadow-emerald-900/20">
+                                            <span>Upload Excel/CSV</span>
+                                            <span id="upload-spinner" class="animate-spin hidden">⟳</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p id="sync-status" class="mt-2 text-xs text-gray-500 hidden"></p>
+                            </div>
+
+                            <!-- Locality Prompt -->
+                            <div class="mb-8">
+                                <label class="block text-xs font-medium text-gray-400 mb-1">Locality Normalization
+                                    Prompt</label>
+                                <textarea id="c-locality-prompt"
+                                    class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono focus:border-blue-500 outline-none"
+                                    rows="3" placeholder="Instructions for AI to normalize locations..."></textarea>
+                            </div>
+
+                            <div id="products-list" class="space-y-4 pb-20"></div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: MEDIA LIBRARY -->
+                    <div id="tab-media" class="hidden absolute inset-0 p-8 overflow-y-auto custom-scrollbar">
+                        <div class="max-w-6xl mx-auto">
+                            <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                                <span>📂</span> Media Library
+                            </h2>
+
+                            <!-- Upload Area -->
+                            <div id="media-dropzone"
+                                class="border-2 border-dashed border-gray-600 rounded-xl p-8 flex flex-col items-center justify-center text-gray-400 hover:border-blue-500 hover:bg-gray-800/50 transition cursor-pointer mb-8"
+                                onclick="document.getElementById('media-upload-input').click()"
+                                ondragover="event.preventDefault(); this.classList.add('border-blue-500', 'bg-gray-800/50')"
+                                ondragleave="this.classList.remove('border-blue-500', 'bg-gray-800/50')"
+                                ondrop="handleMediaDrop(event)">
+
+                                <input type="file" id="media-upload-input" class="hidden" multiple
+                                    onchange="handleMediaUpload(this.files)">
+                                <svg class="w-12 h-12 mb-3 text-gray-500" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                                    </path>
+                                </svg>
+                                <p class="text-sm font-medium">Click to upload or drag and drop</p>
+                                <p class="text-xs text-gray-500 mt-1">PDF, Docs, CSV, Images supported</p>
+                            </div>
+
+                            <!-- Media Grid -->
+                            <div id="media-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                <!-- Items injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: INTEGRATIONS (NEW) -->
+                    <div id="tab-integrations" class="hidden absolute inset-0 p-8 overflow-y-auto custom-scrollbar">
+                        <h2 class="text-2xl font-bold text-white mb-6">Integrations</h2>
+
+                        <!-- SMTP -->
+                        <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700 mb-6">
+                            <h3 class="text-lg font-bold text-blue-400 mb-4 flex items-center gap-2">
+                                <span>📧</span> SMTP Configuration (Email)
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">SMTP Host</label>
+                                    <input id="int-smtp-host" type="text"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="smtp.gmail.com">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">SMTP Port</label>
+                                    <input id="int-smtp-port" type="number"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="587">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">Username / Email</label>
+                                    <input id="int-smtp-user" type="text"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="user@example.com">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">Password / App
+                                        Password</label>
+                                    <input id="int-smtp-pass" type="password"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="••••••••">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">From Name</label>
+                                    <input id="int-smtp-from" type="text"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="My Company">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-end">
+                            <button onclick="testEmail()"
+                                class="px-4 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 border border-blue-600/50 rounded text-xs transition">
+                                Test Email Connection
+                            </button>
+                        </div>
+
+                        <!-- WeSender -->
+                        <div class="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                            <h3 class="text-lg font-bold text-green-400 mb-4 flex items-center gap-2">
+                                <span>💬</span> WeSender (WhatsApp)
+                            </h3>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">API Key</label>
+                                <input id="int-wesender-key" type="password"
+                                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm font-mono"
+                                    placeholder="wesender_api_key_...">
+                                <p class="text-xs text-gray-500 mt-2">Get your API Key from the WeSender dashboard.</p>
+                            </div>
+                            <div class="mt-4 flex justify-end">
+                                <button onclick="testWhatsApp()"
+                                    class="px-4 py-2 bg-green-600/20 text-green-400 hover:bg-green-600/40 border border-green-600/50 rounded text-xs transition">
+                                    Test WhatsApp Connection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: WORKFLOW BUILDER (New Visual Editor) -->
+                    <div id="tab-workflow" class="hidden absolute inset-0 flex bg-[#111827]">
+
+                        <!-- Nodes Palette (Floating Toolbar) -->
+                        <!-- MOVED: Increased top/left to avoid sidebar/header overlap if any context issue exists -->
+                        <div class="absolute top-4 left-4 z-20 flex flex-col gap-2">
+                            <div
+                                class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 pl-1 bg-gray-900/80 px-2 rounded backdrop-blur">
+                                Nodes</div>
+                            <div
+                                class="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl flex flex-col gap-3 w-14 items-center backdrop-blur-md bg-opacity-90">
+                                <div class="group relative">
+                                    <button
+                                        class="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-blue-400"
+                                        title="Trigger" draggable="true" ondragstart="drag(event)" data-node="TRIGGER">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                        Trigger (Cron/Webhook)
+                                    </div>
+                                </div>
+
+                                <div class="group relative">
+                                    <button
+                                        class="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-purple-400"
+                                        title="AI Completion" draggable="true" ondragstart="drag(event)"
+                                        data-node="AI_COMPLETION">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                        AI Generation
+                                    </div>
+                                </div>
+
+                                <div class="group relative">
+                                    <button
+                                        class="w-10 h-10 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-orange-400"
+                                        title="HTML Template" draggable="true" ondragstart="drag(event)"
+                                        data-node="HTML_TEMPLATE">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                        HTML Builder
+                                    </div>
+                                </div>
+
+                                <div class="group relative">
+                                    <button
+                                        class="w-10 h-10 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-sky-400"
+                                        title="Send Email" draggable="true" ondragstart="drag(event)"
+                                        data-node="SEND_EMAIL">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                        Send Email
+                                    </div>
+                                </div>
+
+                                <div class="group relative">
+                                    <button
+                                        class="w-10 h-10 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-green-400"
+                                        title="WhatsApp" draggable="true" ondragstart="drag(event)"
+                                        data-node="SEND_WHATSAPP">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                        WhatsApp Msg
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Canvas -->
+                        <div id="drawflow"
+                            class="flex-1 w-full h-full bg-[radial-gradient(#374151_1px,transparent_1px)] [background-size:24px_24px]"
+                            ondrop="drop(event)" ondragover="allowDrop(event)">
+                            <div class="absolute bottom-4 left-4 text-xs text-gray-600 pointer-events-none select-none">
+                                Floormad Workflow Engine v1.0</div>
+                        </div>
+
+                        <!-- Zoom Controls -->
+                        <div class="absolute bottom-4 right-8 z-20 flex gap-2">
+                            <button onclick="zoomEditor(0.1)"
+                                class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">+</button>
+                            <button onclick="zoomEditor(-0.1)"
+                                class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">-</button>
+                        </div>
+
+                        <!-- Right Configuration Panel (Slide-over) -->
+                        <div id="node-config-panel"
+                            class="hidden w-96 bg-gray-800 border-l border-gray-700 shadow-2xl z-[100] flex flex-col h-full fixed right-0 top-0 bottom-0">
+                            <div
+                                class="h-16 border-b border-gray-700 flex items-center justify-between px-6 bg-gray-900/50 shrink-0">
+                                <div>
+                                    <h3 class="font-bold text-gray-200 text-lg">Configure Node</h3>
+                                    <div class="text-xs text-blue-400 font-mono" id="conf-node-id">#</div>
+                                </div>
+                                <button
+                                    onclick="document.getElementById('node-config-panel').classList.add('hidden'); document.getElementById('node-config-panel').classList.remove('flex'); currentNodeId = null;"
+                                    class="text-gray-500 hover:text-white">✕</button>
+                            </div>
+
+                            <div id="node-config-content" class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                                <!-- Dynamic Content Injected JS -->
+                            </div>
+
+                            <!-- Save/Delete Node -->
+                            <div class="p-6 border-t border-gray-700 bg-gray-900/30 gap-3 flex flex-col">
+                                <button onclick="saveNodeConfig()"
+                                    class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm text-white font-medium shadow-lg shadow-blue-900/20">Update
+                                    Node Settings</button>
+                                <button onclick="deleteSelectedNode()"
+                                    class="w-full py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 text-sm rounded transition border border-red-900/30">Delete
+                                    Node</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: AI (Merged) -->
+                    <div id="tab-ai" class="hidden absolute inset-0 p-8 flex items-center justify-center">
+                        <div class="text-center">
+                            <h3 class="text-xl font-bold text-gray-400">Section Moved</h3>
+                            <p class="text-gray-500 mt-2">AI Settings are now integrated into the Workflow Builder
+                                nodes.</p>
+                            <button onclick="switchTab('tab-workflow')"
+                                class="mt-4 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">Go to
+                                Builder</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
+            <h3 class="text-xl font-bold text-white mb-2">Are you sure?</h3>
+            <p class="text-gray-400 mb-6" id="confirm-msg">This action cannot be undone.</p>
+            <div class="flex justify-center gap-3">
+                <button onclick="closeConfirm(false)"
+                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300">Cancel</button>
+                <button onclick="closeConfirm(true)"
+                    class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white font-semibold">Yes,
+                    Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Price List Cache Viewer Modal -->
+    <div id="price-modal" class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 backdrop-blur-md">
+        <div
+            class="bg-gray-800 rounded-xl max-w-5xl w-full border border-gray-700 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <span class="text-green-400">📊</span> Cached Price List
+                </h2>
+                <button
+                    onclick="document.getElementById('price-modal').classList.add('hidden'); document.getElementById('price-modal').classList.remove('flex');"
+                    class="text-gray-400 hover:text-white transition">✕</button>
+            </div>
+            <div class="p-6 overflow-auto custom-scrollbar">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-900 sticky top-0">
+                        <tr>
+                            <th class="p-3 text-xs font-bold text-gray-400 uppercase border-b border-gray-700">Prodotto
+                            </th>
+                            <th class="p-3 text-xs font-bold text-gray-400 uppercase border-b border-gray-700">Regione
+                            </th>
+                            <th class="p-3 text-xs font-bold text-gray-400 uppercase border-b border-gray-700">Fascia
+                                (Mq)</th>
+                            <th class="p-3 text-xs font-bold text-gray-400 uppercase border-b border-gray-700">Prezzo
+                                Finale</th>
+                        </tr>
+                    </thead>
+                    <tbody id="price-table-body" class="text-sm text-gray-300 divide-y divide-gray-700/50">
+                        <!-- Rows -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-4 border-t border-gray-700 bg-gray-800/50 flex justify-end">
+                <button
+                    onclick="document.getElementById('price-modal').classList.add('hidden'); document.getElementById('price-modal').classList.remove('flex');"
+                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div
+            class="bg-gray-800 rounded-xl p-8 max-w-2xl w-full border border-gray-700 shadow-2xl transform transition-all scale-100">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <span class="text-gray-400">⚙️</span> Global Settings
+                </h2>
+                <button onclick="closeSettings()" class="text-gray-400 hover:text-white transition">✕</button>
+            </div>
+
+            <p class="text-gray-400 text-sm mb-6">
+                Configure credentials here to use them across all projects. Project-specific settings will override
+                these.
+            </p>
+
+            <form id="global-settings-form" class="space-y-6">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Global Service Account JSON</label>
+                    <textarea id="g-sa-json" rows="4"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none text-gray-300 transition"
+                        placeholder="{ 'type': 'service_account'... }"
+                        oninput="extractEmail(this.value, 'g-sa-email')"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Bot Email: <span id="g-sa-email" class="text-emerald-400 font-mono select-all cursor-pointer"
+                            onclick="navigator.clipboard.writeText(this.innerText); showStatus('success', 'Copied', 'Email copied')">...</span>
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Google API Key (Alternative)</label>
+                    <input type="text" id="g-api-key"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white font-mono text-sm"
+                        placeholder="AIzaSy...">
+                    <p class="text-xs text-gray-500 mt-1">
+                        Use this for public or link-shared sheets if Service Account fails.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Default Sheet ID (Optional)</label>
+                    <input type="text" id="g-sheet-id"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white text-sm"
+                        placeholder="Default Google Sheet ID for new projects">
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-700">
+                    <button type="button" onclick="closeSettings()"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-gray-300">Cancel</button>
+                    <button type="submit"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition shadow-lg font-semibold">Save
+                        Global Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Changelog Modal -->
+    <div id="changelog-modal"
+        class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div
+            class="bg-gray-800 rounded-xl p-8 max-w-2xl w-full border border-gray-700 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    📜 System Changelog
+                </h2>
+                <button
+                    onclick="document.getElementById('changelog-modal').classList.add('hidden'); document.getElementById('changelog-modal').classList.remove('flex');"
+                    class="text-gray-400 hover:text-white transition">✕</button>
+            </div>
+            <div class="overflow-y-auto custom-scrollbar flex-1 pr-2" id="changelog-content">
+                <p class="text-gray-400 text-center py-8">Loading...</p>
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-700 flex justify-end">
+                <button
+                    onclick="document.getElementById('changelog-modal').classList.add('hidden'); document.getElementById('changelog-modal').classList.remove('flex');"
+                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-xl p-8 max-w-md w-full border border-gray-700 shadow-2xl text-center">
+            <div class="mb-4 flex justify-center text-5xl">🗑️</div>
+            <h2 class="text-2xl font-bold mb-2 text-white">Delete Project?</h2>
+            <p class="text-gray-300 mb-6">Are you sure you want to delete this project? This action cannot be undone.
+            </p>
+            <div class="flex justify-center gap-4">
+                <button onclick="closeDeleteModal()"
+                    class="px-6 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition text-white">Cancel</button>
+                <button id="confirm-delete-btn"
+                    class="px-6 py-2 bg-red-600 hover:bg-red-500 rounded-lg transition text-white font-bold">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Modal -->
+    <div id="status-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-xl p-8 max-w-xl w-full border border-gray-700 shadow-2xl text-center">
+            <div id="status-icon" class="mb-4 flex justify-center"></div>
+            <h2 id="status-title" class="text-2xl font-bold mb-2 text-white"></h2>
+            <p id="status-msg" class="text-gray-300 mb-6"></p>
+            <div class="bg-gray-900 rounded p-4 text-left hidden" id="status-details-box">
+                <pre id="status-details" class="text-xs text-mono text-gray-400 whitespace-pre-wrap break-all"></pre>
+            </div>
+            <button
+                onclick="document.getElementById('status-modal').classList.add('hidden'); document.getElementById('status-modal').classList.remove('flex');"
+                class="mt-6 px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-white">Close</button>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+
+
+
+    <!-- Output Modal -->
+    <div id="output-modal"
+        class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-[60] backdrop-blur-sm">
+        <div
+            class="bg-gray-800 rounded-lg shadow-2xl w-3/4 h-3/4 flex flex-col border border-gray-700 transform transition-all scale-100">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-900 rounded-t-lg">
+                <h3 class="text-lg font-bold text-purple-400 flex items-center gap-2">
+                    <span>👁️</span> Execution Output
+                </h3>
+                <button
+                    onclick="document.getElementById('output-modal').classList.add('hidden'); document.getElementById('output-modal').classList.remove('flex')"
+                    class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex-1 p-4 overflow-auto bg-[#1e1e1e] font-mono text-xs text-green-400">
+                <pre id="output-content" class="whitespace-pre-wrap break-all"></pre>
+            </div>
+            <div class="p-3 border-t border-gray-700 bg-gray-900 rounded-b-lg flex justify-end gap-2">
+                <button onclick="copyOutput()"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold transition-colors">Copy
+                    JSON</button>
+                <button
+                    onclick="document.getElementById('output-modal').classList.add('hidden'); document.getElementById('output-modal').classList.remove('flex')"
+                    class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-xs font-bold transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION (Enhanced) -->
+    <!-- Replaces old toast-container logic with a single fixed toast for simplicity in v2 -->
+    <!-- Product Template (Updated with Attributes & Knowledge) -->
+    <template id="product-template">
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 relative group product-card">
+            <button
+                class="delete-btn absolute top-2 right-2 text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition z-10">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Product Name</label>
+                    <input type="text"
+                        class="prod-name w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm font-bold placeholder-gray-600 focus:border-blue-500 outline-none transition"
+                        placeholder="e.g. Oak Flooring">
+                </div>
+
+                <!-- Dynamic Attributes -->
+                <div class="bg-gray-900/50 p-3 rounded border border-gray-700/50">
+                    <label class="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wide">Attributes</label>
+                    <div class="prod-attributes space-y-2 mb-2">
+                        <!-- Rows injected here -->
+                    </div>
+                    <button
+                        class="add-attr-btn text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 transition">
+                        <span>+ Add Attribute</span>
+                    </button>
+                    <!-- Hidden field for compatibility/legacy -->
+                    <input type="hidden" class="prod-colors">
+                </div>
+
+                <!-- Knowledge Linking -->
+                <div class="bg-gray-900/50 p-3 rounded border border-gray-700/50">
+                    <label
+                        class="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wide flex justify-between">
+                        <span>Knowledge Base</span>
+                        <span class="text-[10px] text-gray-600 font-normal">Files linked for AI context</span>
+                    </label>
+                    <div class="prod-knowledge flex flex-wrap gap-2 mb-2 min-h-[2rem]">
+                        <!-- Pills injected here -->
+                    </div>
+                    <button
+                        class="link-media-btn text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 px-2 py-1 rounded border border-purple-500/20 flex items-center gap-1 transition">
+                        <span>📎 Link File from Media</span>
+                    </button>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Descriptions (One per line)</label>
+                    <textarea
+                        class="prod-desc w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-xs h-24 placeholder-gray-600 focus:border-blue-500 outline-none transition"
+                        placeholder="Variant 1 description...&#10;Variant 2 description..."></textarea>
+                </div>
+
+                <!-- Price List Upload -->
+                <div class="mt-2 border-t border-gray-700 pt-3">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Product Price List (Excel/CSV)</label>
+                    <input type="file" class="upload-price-input hidden" accept=".xlsx,.csv">
+                    <button
+                        class="upload-price-btn w-full bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-2 rounded text-xs transition border border-gray-600 border-dashed flex items-center justify-center gap-2">
+                        <span>📄 Upload Price List</span>
+                    </button>
+                    <p class="text-[10px] text-gray-500 mt-1">Overrides global price list for this product.</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Attribute Row Template (Nested) -->
+    <template id="attribute-row-template">
+        <div class="flex gap-2 items-center">
+            <input type="text"
+                class="attr-name w-1/3 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
+                placeholder="Name (e.g. Color)">
+            <input type="text"
+                class="attr-vals w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500"
+                placeholder="Values (Red, Blue)">
+            <button class="del-attr-btn text-gray-500 hover:text-red-400">×</button>
+        </div>
+    </template>
+
+    <script src="/static/app.v2.js?v=1.3"></script>
+</body>
+
+</html>
