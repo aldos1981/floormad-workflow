@@ -31,6 +31,7 @@ def init_db():
             locality_prompt TEXT,
             products_config JSON,
             workflow_json TEXT,
+            oauth_credentials JSON,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -38,6 +39,18 @@ def init_db():
     # Migration: Add workflow_json if missing
     try:
         c.execute("ALTER TABLE projects ADD COLUMN workflow_json TEXT")
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
+
+    # Migration: Add oauth_credentials if missing
+    try:
+        c.execute("ALTER TABLE projects ADD COLUMN oauth_credentials JSON")
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
+
+    # Migration: Add pipedrive_config if missing
+    try:
+        c.execute("ALTER TABLE projects ADD COLUMN pipedrive_config JSON")
     except sqlite3.OperationalError:
         pass # Column likely already exists
     
@@ -54,11 +67,29 @@ def init_db():
         )
     ''')
     
+    # Migration: Add output_json to runs if missing
+    try:
+        c.execute("ALTER TABLE runs ADD COLUMN output_json TEXT")
+    except sqlite3.OperationalError:
+        pass # Column likely already exists
+    
     # Settings Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT
+        )
+    ''')
+
+    # Workflow Versions Table (Backup & Restore)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS workflow_versions (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            workflow_json TEXT NOT NULL,
+            label TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
         )
     ''')
     

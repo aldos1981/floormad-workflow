@@ -14,7 +14,9 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/drawflow/dist/drawflow.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="/static/app.v2.js?v=20260213_fix_events_v3"></script>
+    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <script async defer src="https://accounts.google.com/gsi/client"></script>
+    <script src="/static/app.v2.js?v=FIX_EXEC_CHECK_1"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow/dist/drawflow.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
@@ -156,6 +158,19 @@
             transform: translateY(-50%);
             right: -15px;
         }
+
+        /* Space Panning Mode */
+        .drawflow.space-panning-active .drawflow-node {
+            pointer-events: none !important;
+        }
+
+        .drawflow.space-panning-active {
+            cursor: grab !important;
+        }
+
+        .drawflow.space-panning-active:active {
+            cursor: grabbing !important;
+        }
     </style>
 </head>
 
@@ -260,6 +275,31 @@
                         Project</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- System Log Panel (Bottom) -->
+    <div id="system-log-panel"
+        class="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 shadow-2xl z-40 transition-all duration-300"
+        style="height: 250px;">
+        <div class="h-full flex flex-col">
+            <!-- Header -->
+            <div class="h-10 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-4 shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-blue-400">📋 System Log</span>
+                    <button onclick="clearSystemLog()"
+                        class="text-xs text-gray-500 hover:text-gray-300 transition">Clear</button>
+                </div>
+                <button onclick="toggleSystemLog()" class="text-gray-400 hover:text-white transition">
+                    <svg id="log-toggle-icon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+            <!-- Log Content -->
+            <div id="system-log-content" class="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1 bg-black/40">
+                <div class="text-gray-500 italic">System log initialized...</div>
+            </div>
         </div>
     </div>
 
@@ -391,9 +431,17 @@
 
                             <div>
                                 <label class="block text-sm font-medium text-gray-300 mb-1">Google Sheet ID</label>
-                                <input id="c-sheet" type="text"
-                                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                                <div class="flex gap-2">
+                                    <input id="c-sheet" type="text"
+                                        class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+                                    <button type="button"
+                                        onclick="openDrivePicker((id, doc) => { document.getElementById('c-sheet').value = id; })"
+                                        class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg border border-gray-600 shadow-sm"
+                                        title="Select from Google Drive">
+                                        📂
+                                    </button>
+                                </div>
                                 <p class="text-xs text-gray-500 mt-1">Found in the URL of your Google Sheet.</p>
                             </div>
 
@@ -401,8 +449,38 @@
                                 <label class="block text-sm font-medium text-gray-300 mb-1">Service Account JSON</label>
                                 <textarea id="c-json" rows="4"
                                     class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder='{"type": "service_account", ...}'></textarea>
-                                <p class="text-xs text-gray-500 mt-1" id="c-sa-email"></p>
+                                    placeholder='{"type": "service_account", ...}'
+                                    oninput="extractEmail(this.value, 'c-sa-email')"></textarea>
+                                <div id="c-sa-email"></div>
+                            </div>
+
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium text-gray-300 mb-2">OAuth Connection</label>
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <button id="btn-connect-google" onclick="connectGoogleDrive()"
+                                        class="flex items-center gap-2 bg-white text-gray-800 hover:bg-gray-100 px-4 py-2.5 rounded-lg font-medium transition shadow-lg border border-gray-200">
+                                        <svg class="w-5 h-5" viewBox="0 0 48 48">
+                                            <path fill="#EA4335"
+                                                d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                                            <path fill="#4285F4"
+                                                d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                                            <path fill="#34A853"
+                                                d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                                            <path fill="#FBBC05"
+                                                d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                                        </svg>
+                                        <span>Connect Google</span>
+                                    </button>
+                                    <button id="btn-disconnect-google" onclick="disconnectGoogle()"
+                                        class="hidden flex items-center gap-2 bg-red-900/30 text-red-400 hover:bg-red-800/50 hover:text-red-300 px-4 py-2.5 rounded-lg font-medium transition border border-red-800/50">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        <span>Disconnect</span>
+                                    </button>
+                                    <span id="oauth-status" class="text-sm text-gray-500">Not Connected</span>
+                                </div>
                             </div>
 
                             <!-- Cron -->
@@ -442,9 +520,17 @@
                                     <div>
                                         <label class="block text-xs font-medium text-gray-400 mb-1">Sheet ID
                                             (Optional)</label>
-                                        <input type="text" id="c-price-url"
-                                            placeholder="If different from main sheet..."
-                                            class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-xs">
+                                        <div class="flex gap-2">
+                                            <input type="text" id="c-price-url"
+                                                placeholder="If different from main sheet..."
+                                                class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-white text-xs">
+                                            <button type="button"
+                                                onclick="openDrivePicker((id, doc) => { document.getElementById('c-price-url').value = id; })"
+                                                class="bg-gray-700 hover:bg-gray-600 text-white px-2 rounded border border-gray-600 shadow-sm text-xs"
+                                                title="Select from Google Drive">
+                                                📂
+                                            </button>
+                                        </div>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-400 mb-1">Range</label>
@@ -561,12 +647,19 @@
                                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
                                         placeholder="My Company">
                                 </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-300 mb-1">Test Recipient
+                                        (To)</label>
+                                    <input id="int-smtp-to" type="email"
+                                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm"
+                                        placeholder="test@example.com">
+                                </div>
                             </div>
                         </div>
                         <div class="mt-4 flex justify-end">
                             <button onclick="testEmail()"
                                 class="px-4 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 border border-blue-600/50 rounded text-xs transition">
-                                Test Email Connection
+                                📧 Test SMTP Connection
                             </button>
                         </div>
 
@@ -582,6 +675,13 @@
                                     placeholder="wesender_api_key_...">
                                 <p class="text-xs text-gray-500 mt-2">Get your API Key from the WeSender dashboard.</p>
                             </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium text-gray-300 mb-1">API URL (Optional)</label>
+                                <input id="int-wesender-url" type="text"
+                                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm font-mono"
+                                    placeholder="https://wasenderapi.com/api/send-message">
+                                <p class="text-xs text-gray-500 mt-2">Override default API URL if needed.</p>
+                            </div>
                             <div class="mt-4 flex justify-end">
                                 <button onclick="testWhatsApp()"
                                     class="px-4 py-2 bg-green-600/20 text-green-400 hover:bg-green-600/40 border border-green-600/50 rounded text-xs transition">
@@ -591,112 +691,254 @@
                         </div>
                     </div>
 
+                    <!-- Pipedrive CRM -->
+                    <div class="bg-gray-800/50 rounded-xl p-5 border border-gray-700/50">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                                <span class="text-2xl">🔗</span> Pipedrive CRM
+                            </h3>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">API Token</label>
+                                <input id="int-pipedrive-token" type="password"
+                                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm font-mono"
+                                    placeholder="pipedrive_api_token_...">
+                                <p class="text-xs text-gray-500 mt-2">Get your API Token from Pipedrive → Settings →
+                                    Personal Preferences → API.</p>
+                            </div>
+                            <div class="mt-4 flex justify-end">
+                                <button onclick="testPipedrive()"
+                                    class="px-4 py-2 bg-purple-600/20 text-purple-400 hover:bg-purple-600/40 border border-purple-600/50 rounded text-xs transition">
+                                    Test Pipedrive Connection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- TAB: WORKFLOW BUILDER (New Visual Editor) -->
-                    <div id="tab-workflow" class="hidden absolute inset-0 flex bg-[#111827]">
+                    <div id="tab-workflow" class="hidden absolute inset-0 flex flex-col bg-[#111827]">
+                        <!-- Canvas Area (flex-1, contains canvas + all overlays) -->
+                        <div class="relative flex-1 overflow-hidden">
 
-                        <!-- Nodes Palette (Floating Toolbar) -->
-                        <!-- MOVED: Increased top/left to avoid sidebar/header overlap if any context issue exists -->
-                        <div class="absolute top-4 left-4 z-20 flex flex-col gap-2">
-                            <div
-                                class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 pl-1 bg-gray-900/80 px-2 rounded backdrop-blur">
-                                Nodes</div>
-                            <div
-                                class="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl flex flex-col gap-3 w-14 items-center backdrop-blur-md bg-opacity-90">
-                                <div class="group relative">
-                                    <button
-                                        class="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-blue-400"
-                                        title="Trigger" draggable="true" ondragstart="drag(event)" data-node="TRIGGER">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                                d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
-                                        Trigger (Cron/Webhook)
+                            <!-- Nodes Palette (Floating Toolbar) -->
+                            <!-- MOVED: Increased top/left to avoid sidebar/header overlap if any context issue exists -->
+                            <div class="absolute top-4 left-4 z-20 flex flex-col gap-2">
+                                <div
+                                    class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 pl-1 bg-gray-900/80 px-2 rounded backdrop-blur">
+                                    Nodes</div>
+                                <div
+                                    class="bg-gray-800 border border-gray-700 rounded-lg p-2 shadow-xl flex flex-col gap-3 w-14 items-center backdrop-blur-md bg-opacity-90">
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-blue-400"
+                                            title="Trigger" draggable="true" ondragstart="drag(event)"
+                                            data-node="TRIGGER">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            Trigger (Cron/Webhook)
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-purple-400"
+                                            title="AI Completion" draggable="true" ondragstart="drag(event)"
+                                            data-node="AI_COMPLETION">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            AI Generation
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-orange-400"
+                                            title="HTML Template" draggable="true" ondragstart="drag(event)"
+                                            data-node="HTML_TEMPLATE">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            HTML Builder
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-sky-400"
+                                            title="Send Email" draggable="true" ondragstart="drag(event)"
+                                            data-node="SEND_EMAIL">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            Send Email
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-green-400"
+                                            title="WhatsApp" draggable="true" ondragstart="drag(event)"
+                                            data-node="SEND_WHATSAPP">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            WhatsApp Msg
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-emerald-400"
+                                            title="HTML Preview" draggable="true" ondragstart="drag(event)"
+                                            data-node="HTML_PREVIEW">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            HTML Preview
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-teal-500/10 text-teal-400 hover:bg-teal-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-teal-400"
+                                            title="Knowledge" draggable="true" ondragstart="drag(event)"
+                                            data-node="KNOWLEDGE">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            Knowledge Base
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center border border-transparent hover:border-emerald-400"
+                                            title="Google Sheet" draggable="true" ondragstart="drag(event)"
+                                            data-node="GOOGLE_SHEET">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            Google Sheet Read
+                                        </div>
+                                    </div>
+
+                                    <div class="group relative">
+                                        <button
+                                            class="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-purple-400"
+                                            title="Pipedrive CRM" draggable="true" ondragstart="drag(event)"
+                                            data-node="PIPEDRIVE">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
+                                            Pipedrive CRM
+                                        </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="group relative">
-                                    <button
-                                        class="w-10 h-10 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-purple-400"
-                                        title="AI Completion" draggable="true" ondragstart="drag(event)"
-                                        data-node="AI_COMPLETION">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                                d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
-                                        AI Generation
-                                    </div>
-                                </div>
+                            <!-- Canvas -->
+                            <div id="drawflow"
+                                class="flex-1 w-full h-full bg-[radial-gradient(#374151_1px,transparent_1px)] [background-size:24px_24px]"
+                                ondrop="drop(event)" ondragover="allowDrop(event)">
+                                <div
+                                    class="absolute bottom-4 left-4 text-xs text-gray-600 pointer-events-none select-none">
+                                    Floormad Workflow Engine v1.0</div>
+                            </div>
 
-                                <div class="group relative">
-                                    <button
-                                        class="w-10 h-10 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-orange-400"
-                                        title="HTML Template" draggable="true" ondragstart="drag(event)"
-                                        data-node="HTML_TEMPLATE">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
-                                        HTML Builder
-                                    </div>
-                                </div>
+                            <!-- Zoom Controls + Version History + JSON Preview -->
+                            <div class="absolute bottom-4 right-8 z-20 flex gap-2">
+                                <button onclick="toggleVersionPanel()"
+                                    class="h-8 px-3 flex items-center gap-1.5 bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg text-xs"
+                                    title="Version History">📜 History</button>
+                                <button onclick="zoomEditor(0.1)"
+                                    class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">+</button>
+                                <button onclick="zoomEditor(-0.1)"
+                                    class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">-</button>
+                            </div>
+                        </div> <!-- end canvas area -->
 
-                                <div class="group relative">
-                                    <button
-                                        class="w-10 h-10 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-sky-400"
-                                        title="Send Email" draggable="true" ondragstart="drag(event)"
-                                        data-node="SEND_EMAIL">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
-                                        Send Email
-                                    </div>
-                                </div>
-
-                                <div class="group relative">
-                                    <button
-                                        class="w-10 h-10 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition flex items-center justify-center border border-transparent hover:border-green-400"
-                                        title="WhatsApp" draggable="true" ondragstart="drag(event)"
-                                        data-node="SEND_WHATSAPP">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                        </svg>
-                                    </button>
-                                    <div
-                                        class="absolute left-full top-2 ml-3 px-3 py-1.5 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-50 pointer-events-none">
-                                        WhatsApp Msg
+                        <!-- JSON Data Bottom Bar (Always Visible) -->
+                        <div id="json-bottom-bar"
+                            class="border-t border-gray-700 bg-gray-900/95 backdrop-blur z-20 shrink-0"
+                            style="min-height: 38px;">
+                            <div class="flex items-center gap-2 px-3 h-[38px] cursor-pointer select-none"
+                                onclick="toggleJsonBottomBar()">
+                                <span class="text-xs">📊</span>
+                                <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">JSON
+                                    Context</span>
+                                <span id="json-bar-count" class="text-[10px] text-gray-600 ml-1">(run to collect)</span>
+                                <span id="json-bar-chevron"
+                                    class="text-gray-500 text-[10px] ml-auto transition-transform">▲</span>
+                            </div>
+                            <div id="json-bar-content" class="hidden border-t border-gray-700/50">
+                                <div id="json-preview-content" class="flex gap-2 px-3 py-2 overflow-x-auto"
+                                    style="max-height: 180px; overflow-y: auto;">
+                                    <div class="text-center text-gray-500 text-xs py-3 w-full">
+                                        <span class="text-lg">📭</span>
+                                        <span class="ml-2">Run your workflow to see collected JSON fields here.</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Canvas -->
-                        <div id="drawflow"
-                            class="flex-1 w-full h-full bg-[radial-gradient(#374151_1px,transparent_1px)] [background-size:24px_24px]"
-                            ondrop="drop(event)" ondragover="allowDrop(event)">
-                            <div class="absolute bottom-4 left-4 text-xs text-gray-600 pointer-events-none select-none">
-                                Floormad Workflow Engine v1.0</div>
-                        </div>
-
-                        <!-- Zoom Controls -->
-                        <div class="absolute bottom-4 right-8 z-20 flex gap-2">
-                            <button onclick="zoomEditor(0.1)"
-                                class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">+</button>
-                            <button onclick="zoomEditor(-0.1)"
-                                class="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 shadow-lg">-</button>
+                        <!-- Version History Panel -->
+                        <div id="version-history-panel"
+                            class="hidden w-80 bg-gray-800 border-l border-gray-700 shadow-2xl z-30 flex-col h-full absolute right-0 top-0 bottom-0">
+                            <div
+                                class="h-14 border-b border-gray-700 flex items-center justify-between px-4 bg-gray-900/50 shrink-0">
+                                <h3 class="font-bold text-gray-200 text-sm flex items-center gap-2">📜 Version History
+                                </h3>
+                                <button onclick="toggleVersionPanel()"
+                                    class="text-gray-500 hover:text-white text-lg">✕</button>
+                            </div>
+                            <div class="p-3 border-b border-gray-700">
+                                <button onclick="createManualSnapshot()"
+                                    class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs text-white font-medium shadow-lg flex items-center justify-center gap-2">
+                                    📸 Save Snapshot
+                                </button>
+                            </div>
+                            <div id="version-list" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                                <p class="text-gray-500 text-xs text-center py-4">Loading versions...</p>
+                            </div>
                         </div>
 
                         <!-- Right Configuration Panel (Slide-over) -->
@@ -747,19 +989,6 @@
     </div>
 
     <!-- Custom Confirmation Modal -->
-    <div id="confirm-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
-        <div class="bg-gray-800 rounded-xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl text-center">
-            <h3 class="text-xl font-bold text-white mb-2">Are you sure?</h3>
-            <p class="text-gray-400 mb-6" id="confirm-msg">This action cannot be undone.</p>
-            <div class="flex justify-center gap-3">
-                <button onclick="closeConfirm(false)"
-                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300">Cancel</button>
-                <button onclick="closeConfirm(true)"
-                    class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white font-semibold">Yes,
-                    Proceed</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Price List Cache Viewer Modal -->
     <div id="price-modal" class="fixed inset-0 bg-black/90 hidden items-center justify-center z-50 backdrop-blur-md">
@@ -831,11 +1060,17 @@
 
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Google API Key (Alternative)</label>
-                    <input type="text" id="g-api-key"
-                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white font-mono text-sm"
-                        placeholder="AIzaSy...">
+                    <div class="flex gap-2">
+                        <input type="password" id="g-api-key"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none text-white font-mono text-sm"
+                            placeholder="AIzaSy...">
+                        <button type="button" onclick="testGeminiConnection()"
+                            class="bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700 text-sm whitespace-nowrap">
+                            Test AI
+                        </button>
+                    </div>
                     <p class="text-xs text-gray-500 mt-1">
-                        Use this for public or link-shared sheets if Service Account fails.
+                        Use this for AI features (Optimization, Emails) and public sheets.
                     </p>
                 </div>
 
@@ -897,6 +1132,23 @@
         </div>
     </div>
 
+    <!-- Node Delete Modal -->
+    <div id="node-delete-modal"
+        class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[250] backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-xl p-8 max-w-md w-full border border-gray-700 shadow-2xl text-center">
+            <div class="mb-4 flex justify-center text-5xl" id="confirm-modal-icon">🗑️</div>
+            <h2 class="text-2xl font-bold mb-2 text-white" id="confirm-modal-title">Delete Node?</h2>
+            <p class="text-gray-300 mb-6" id="confirm-modal-text">Are you sure you want to delete this node? This action
+                cannot be undone.</p>
+            <div class="flex justify-center gap-4">
+                <button onclick="window.cancelNodeDelete()"
+                    class="px-6 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition text-white">Cancel</button>
+                <button onclick="window.confirmNodeDelete()"
+                    class="px-6 py-2 bg-red-600 hover:bg-red-500 rounded-lg transition text-white font-bold">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Status Modal -->
     <div id="status-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
         <div class="bg-gray-800 rounded-xl p-8 max-w-xl w-full border border-gray-700 shadow-2xl text-center">
@@ -924,7 +1176,7 @@
             class="bg-gray-800 rounded-lg shadow-2xl w-3/4 h-3/4 flex flex-col border border-gray-700 transform transition-all scale-100">
             <div class="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-900 rounded-t-lg">
                 <h3 class="text-lg font-bold text-purple-400 flex items-center gap-2">
-                    <span>👁️</span> Execution Output
+                    <span>👁️</span> <span id="output-title-text">Execution Output</span>
                 </h3>
                 <button
                     onclick="document.getElementById('output-modal').classList.add('hidden'); document.getElementById('output-modal').classList.remove('flex')"
@@ -949,6 +1201,25 @@
         </div>
     </div>
 
+    <!-- Custom Confirm Modal -->
+    <div id="confirm-modal"
+        class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] items-center justify-center">
+        <div class="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 max-w-md w-full mx-4 overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
+                <h3 id="confirm-title" class="text-lg font-bold text-white">Confirm Action</h3>
+            </div>
+            <div class="p-6">
+                <p id="confirm-message" class="text-gray-300 text-sm leading-relaxed"></p>
+            </div>
+            <div class="flex gap-3 p-4 bg-gray-900/50 border-t border-gray-700">
+                <button id="confirm-cancel"
+                    class="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Cancel</button>
+                <button id="confirm-ok"
+                    class="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <!-- TOAST NOTIFICATION (Enhanced) -->
     <!-- Replaces old toast-container logic with a single fixed toast for simplicity in v2 -->
     <!-- Product Template (Updated with Attributes & Knowledge) -->
@@ -969,35 +1240,43 @@
                         placeholder="e.g. Oak Flooring">
                 </div>
 
-                <!-- Dynamic Attributes -->
-                <div class="bg-gray-900/50 p-3 rounded border border-gray-700/50">
-                    <label class="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wide">Attributes</label>
-                    <div class="prod-attributes space-y-2 mb-2">
-                        <!-- Rows injected here -->
+                <!-- File Selection Overrides -->
+                <div
+                    class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-gray-900/40 p-3 rounded-lg border border-gray-700/50">
+                    <div>
+                        <label class="block text-xs font-semibold text-emerald-400 mb-1">Listino Prezzi
+                            (Prioritario)</label>
+                        <select
+                            class="price-list-select w-full bg-gray-800 border border-gray-600 rounded p-1.5 text-xs text-white focus:border-emerald-500 outline-none">
+                            <option value="">-- Select File --</option>
+                        </select>
+                        <p class="text-[10px] text-gray-500 mt-1">Seleziona un file dalla Media Library per
+                            sovrascrivere il listino globale.</p>
                     </div>
-                    <button
-                        class="add-attr-btn text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 transition">
-                        <span>+ Add Attribute</span>
-                    </button>
-                    <!-- Hidden field for compatibility/legacy -->
-                    <input type="hidden" class="prod-colors">
+                    <div>
+                        <label class="block text-xs font-semibold text-purple-400 mb-1">Knowledge Base
+                            (Prioritario)</label>
+                        <select
+                            class="knowledge-base-select w-full bg-gray-800 border border-gray-600 rounded p-1.5 text-xs text-white focus:border-purple-500 outline-none">
+                            <option value="">-- Select File --</option>
+                        </select>
+                        <p class="text-[10px] text-gray-500 mt-1">Seleziona un file (TXT/PDF) da usare come fonte di
+                            conoscenza primaria.</p>
+                    </div>
                 </div>
 
-                <!-- Knowledge Linking -->
-                <div class="bg-gray-900/50 p-3 rounded border border-gray-700/50">
-                    <label
-                        class="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wide flex justify-between">
-                        <span>Knowledge Base</span>
-                        <span class="text-[10px] text-gray-600 font-normal">Files linked for AI context</span>
-                    </label>
-                    <div class="prod-knowledge flex flex-wrap gap-2 mb-2 min-h-[2rem]">
-                        <!-- Pills injected here -->
-                    </div>
-                    <button
-                        class="link-media-btn text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 px-2 py-1 rounded border border-purple-500/20 flex items-center gap-1 transition">
-                        <span>📎 Link File from Media</span>
-                    </button>
+                <!-- Attributes -->
+                <div class="mb-4">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Attributes (Variants)</label>
+                    <div class="prod-attributes space-y-2"></div>
+                    <button class="add-attr-btn text-xs text-blue-400 hover:text-blue-300 mt-1">+ Add
+                        Attribute</button>
                 </div>
+                <!-- Hidden field for compatibility/legacy -->
+                <input type="hidden" class="prod-colors">
+
+
+
 
                 <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Descriptions (One per line)</label>
@@ -1007,15 +1286,7 @@
                 </div>
 
                 <!-- Price List Upload -->
-                <div class="mt-2 border-t border-gray-700 pt-3">
-                    <label class="block text-xs font-medium text-gray-500 mb-1">Product Price List (Excel/CSV)</label>
-                    <input type="file" class="upload-price-input hidden" accept=".xlsx,.csv">
-                    <button
-                        class="upload-price-btn w-full bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-2 rounded text-xs transition border border-gray-600 border-dashed flex items-center justify-center gap-2">
-                        <span>📄 Upload Price List</span>
-                    </button>
-                    <p class="text-[10px] text-gray-500 mt-1">Overrides global price list for this product.</p>
-                </div>
+
             </div>
         </div>
     </template>
@@ -1033,7 +1304,40 @@
         </div>
     </template>
 
-    <script src="/static/app.v2.js?v=1.3"></script>
+    <!-- Global Settings Modal -->
+    <div id="settings-modal"
+        class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[60] backdrop-blur-sm">
+        <div class="bg-gray-800 rounded-xl p-8 max-w-lg w-full border border-gray-700 shadow-2xl">
+            <h2 class="text-2xl font-bold mb-6 text-white flex items-center gap-2">
+                <span>⚙️</span> Global Settings
+            </h2>
+            <form id="global-settings-form" class="space-y-4" onsubmit="event.preventDefault(); saveGlobalSettings();">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Google OAuth Client ID</label>
+                    <input type="text" id="gs-client-id"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition text-white font-mono text-xs"
+                        placeholder="...apps.googleusercontent.com">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Google OAuth Client Secret</label>
+                    <input type="password" id="gs-client-secret"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none transition text-white font-mono text-xs"
+                        placeholder="GOCSPX-...">
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button"
+                        onclick="document.getElementById('settings-modal').classList.add('hidden'); document.getElementById('settings-modal').classList.remove('flex');"
+                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-gray-300">Close</button>
+                    <button type="submit"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition shadow-lg">Save
+                        Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/app.v2.js?v=1.7"></script>
 </body>
 
 </html>

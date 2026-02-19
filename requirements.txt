@@ -1,13 +1,13 @@
 fastapi
-uvicorn
+uvicorn[standard]
 requests
 python-multipart
-# smtplib is standard library
-# ssl is standard library
-# json is standard library
-# os, sys, shutil, datetime are standard library
 a2wsgi
 google-generativeai
 python-dotenv
-
-
+google-auth-oauthlib
+google-auth-httplib2
+gspread
+openpyxl
+aiofiles
+websockets

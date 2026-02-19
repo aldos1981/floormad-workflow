@@ -1,25 +1,97 @@
 // App Initialized
 console.log("App.js loaded externally");
 
+// --- DRAWFLOW INSTANCE ---
+let editor = null;
+
+// --- SYSTEM LOG ---
+let systemLogExpanded = true;
+
+function addSystemLog(type, message) {
+    const logContent = document.getElementById('system-log-content');
+    if (!logContent) return;
+
+    const timestamp = new Date().toLocaleTimeString('it-IT');
+    const logEntry = document.createElement('div');
+    logEntry.className = 'flex gap-2 text-xs';
+
+    const typeColors = {
+        'info': 'text-blue-400',
+        'success': 'text-green-400',
+        'error': 'text-red-400',
+        'warning': 'text-yellow-400'
+    };
+
+    const typeIcons = {
+        'info': 'ℹ️',
+        'success': '✅',
+        'error': '❌',
+        'warning': '⚠️'
+    };
+
+    logEntry.innerHTML = `
+        <span class="text-gray-600">[${timestamp}]</span>
+        <span class="${typeColors[type] || 'text-gray-400'}">${typeIcons[type] || '•'}</span>
+        <span class="text-gray-300 flex-1">${message}</span>
+    `;
+
+    logContent.appendChild(logEntry);
+    logContent.scrollTop = logContent.scrollHeight;
+
+    // Keep only last 100 entries
+    while (logContent.children.length > 100) {
+        logContent.removeChild(logContent.firstChild);
+    }
+}
+
+function clearSystemLog() {
+    const logContent = document.getElementById('system-log-content');
+    if (logContent) {
+        logContent.innerHTML = '<div class="text-gray-500 italic">Log cleared...</div>';
+    }
+}
+
+function toggleSystemLog() {
+    const panel = document.getElementById('system-log-panel');
+    const icon = document.getElementById('log-toggle-icon');
+    if (!panel) return;
+
+    systemLogExpanded = !systemLogExpanded;
+
+    if (systemLogExpanded) {
+        panel.style.height = '250px';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        panel.style.height = '40px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
 
 // --- UI UTILS ---
-let currentProjectId = null;
-let lastExecutionResult = null;
-
 function showToast(type, title, msg) {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
 
-    // Enhanced Toast Styling: Wider box, better readability
-    toast.className = `pointer-events-auto w-[600px] max-w-[90vw] shadow-2xl rounded-xl ring-1 ring-white/10 transition transform duration-300 ease-out translate-y-2 opacity-0 mb-4 ${type === 'success' ? 'bg-gray-800 border-l-8 border-green-500' : 'bg-gray-900 border-l-8 border-red-500'}`;
+    // Determine colors and icons based on type
+    let borderColor, icon;
+    if (type === 'success') {
+        borderColor = 'border-green-500';
+        icon = '<span class="text-3xl">✅</span>';
+    } else if (type === 'loading' || type === 'info') {
+        borderColor = 'border-yellow-500';
+        icon = '<span class="text-3xl">⏳</span>';
+    } else { // error
+        borderColor = 'border-red-500';
+        icon = '<span class="text-3xl">❌</span>';
+    }
+
+    toast.className = `pointer-events-auto w-[600px] max-w-[90vw] shadow-2xl rounded-xl ring-1 ring-white/10 transition transform duration-300 ease-out translate-y-2 opacity-0 mb-4 bg-gray-800 border-l-8 ${borderColor}`;
 
     toast.innerHTML = `
                 <div class="p-5">
                     <div class="flex items-start">
                         <div class="flex-shrink-0">
-                            ${type === 'success'
-            ? '<span class="text-3xl">✅</span>'
-            : '<span class="text-3xl">❌</span>'}
+                            ${icon}
                         </div>
                         <div class="ml-4 w-0 flex-1 pt-1">
                             <p class="text-xl font-bold text-white leading-6 mb-2">${title}</p>
@@ -51,20 +123,84 @@ function showToast(type, title, msg) {
 
 // Wrapper to replace old showStatus with Toast
 function showStatus(type, title, msg, details = null) {
+    // For errors with multi-line content, use the persistent modal
+    if (type === 'error' && msg && msg.includes('\n')) {
+        const modal = document.getElementById('status-modal');
+        const iconEl = document.getElementById('status-icon');
+        const titleEl = document.getElementById('status-title');
+        const msgEl = document.getElementById('status-msg');
+        const detailsBox = document.getElementById('status-details-box');
+        const detailsEl = document.getElementById('status-details');
+
+        if (modal) {
+            if (iconEl) iconEl.innerHTML = '<span class="text-5xl">❌</span>';
+            if (titleEl) titleEl.textContent = title;
+            if (msgEl) msgEl.textContent = msg.split('\n')[0]; // First line as summary
+            if (detailsBox && detailsEl) {
+                detailsBox.classList.remove('hidden');
+                detailsBox.style.maxHeight = '400px';
+                detailsBox.style.overflow = 'auto';
+                detailsEl.textContent = msg;
+            }
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            return;
+        }
+    }
     showToast(type, title, msg);
     if (details) console.error("Error details:", details);
 }
 
 function extractEmail(jsonStr, targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
     try {
         const data = JSON.parse(jsonStr);
         if (data.client_email) {
-            document.getElementById(targetId).innerText = data.client_email;
+            const email = data.client_email;
+            el.innerHTML = `
+                <div style="margin-top:8px;background:#1e293b;border:1px solid #3b82f6;border-radius:10px;padding:14px 16px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                        <span style="font-size:14px;">🔗</span>
+                        <span style="color:#93c5fd;font-weight:600;font-size:13px;">Condividi il Google Sheet con questo account</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;background:#0f172a;border-radius:8px;padding:8px 12px;margin-bottom:10px;">
+                        <code style="color:#60a5fa;font-size:12px;flex:1;word-break:break-all;">${email}</code>
+                        <button onclick="navigator.clipboard.writeText('${email}');this.textContent='✅ Copiato!';setTimeout(()=>this.textContent='📋 Copia',1500)"
+                            style="background:#2563eb;color:white;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap;min-width:80px;">
+                            📋 Copia
+                        </button>
+                    </div>
+                    <div style="color:#94a3b8;font-size:11px;line-height:1.6;">
+                        <strong style="color:#cbd5e1;">Come fare:</strong><br>
+                        1️⃣ Apri il tuo Google Sheet<br>
+                        2️⃣ Click <strong>Condividi</strong> (Share) in alto a destra<br>
+                        3️⃣ Incolla l'email qui sopra<br>
+                        4️⃣ Imposta il ruolo su <strong style="color:#34d399;">Editor</strong><br>
+                        5️⃣ Deseleziona "Notifica persone" e click <strong>Condividi</strong>
+                    </div>
+                </div>
+            `;
+        } else {
+            el.innerHTML = '';
         }
     } catch (e) {
         // Ignore parsing errors while typing
+        el.innerHTML = '';
     }
 }
+
+// --- INIT ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Add event listener for delete confirmation
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', handleConfirmDelete);
+        console.log("Attached click listener to confirm-delete-btn");
+    } else {
+        console.warn("Could not find confirm-delete-btn to attach listener");
+    }
+});
 
 // --- TAB LOGIC ---
 function switchTab(tabId) {
@@ -90,13 +226,19 @@ function switchTab(tabId) {
         if (tabId === 'tab-workflow') {
             toolbar.classList.remove('hidden');
             toolbar.classList.add('flex');
+            // Force redraw connections after tab is visible
+            setTimeout(() => {
+                if (typeof forceRedrawConnections === 'function') {
+                    forceRedrawConnections();
+                }
+            }, 50);
         } else {
             toolbar.classList.add('hidden');
             toolbar.classList.remove('flex');
         }
     }
 
-    if (tabId === 'tab-media') {
+    if (tabId === 'tab-media' || tabId === 'tab-products') {
         loadMedia();
     }
 }
@@ -105,6 +247,8 @@ function switchTab(tabId) {
 function showOutput() {
     const modal = document.getElementById('output-modal');
     const content = document.getElementById('output-content');
+    const title = document.getElementById('output-title-text');
+    if (title) title.innerText = "Execution Output";
 
     if (!lastExecutionResult) {
         showStatus('error', 'No Output', 'Run the workflow first to see results.');
@@ -112,6 +256,25 @@ function showOutput() {
     }
 
     content.innerText = JSON.stringify(lastExecutionResult, null, 2);
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+window.viewJsonVar = function (varName) {
+    if (!lastExecutionResult || !lastExecutionResult.final_context) return;
+    const modal = document.getElementById('output-modal');
+    const content = document.getElementById('output-content');
+    const title = document.getElementById('output-title-text');
+
+    if (title) title.innerText = `Variable: {{${varName}}}`;
+
+    const val = lastExecutionResult.final_context[varName];
+    if (typeof val === 'object' && val !== null) {
+        content.innerText = JSON.stringify(val, null, 2);
+    } else {
+        content.innerText = String(val);
+    }
+
     modal.classList.remove('hidden');
     modal.classList.add('flex');
 }
@@ -142,12 +305,82 @@ function closeConfirm(result) {
     if (confirmCallback) confirmCallback(result);
 }
 
-// --- PRODUCT CONFIG LOGIC ---
+// --- GLOBAL STATE ---
+let currentProjectId = null;
 let currentProducts = [];
-
-// --- MEDIA LIBRARY LOGIC ---
+let currentWorkflow = {};
+let currentPriceCache = [];
+let currentHeaders = [];
 let currentMedia = [];
-let mediaSelectorCallback = null; // To handle product linking
+let lastExecutionResult = null;
+
+// Track unsaved changes
+let hasUnsavedChanges = false;
+
+function markConfigDirty() {
+    hasUnsavedChanges = true;
+    const saveBtn = document.getElementById('save-config-btn');
+    if (saveBtn) {
+        saveBtn.classList.remove('hidden');
+        saveBtn.classList.add('flex');
+    }
+}
+
+function markConfigClean() {
+    hasUnsavedChanges = false;
+    // Don't hide the button - keep it visible for user convenience
+}
+
+// Custom Confirm Modal
+function customConfirm(title, message) {
+    console.log(`[MODAL] customConfirm called with title: "${title}"`);
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        const titleEl = document.getElementById('confirm-title');
+        const messageEl = document.getElementById('confirm-message');
+        const okBtn = document.getElementById('confirm-ok');
+        const cancelBtn = document.getElementById('confirm-cancel');
+
+        console.log(`[MODAL] Elements found:`, {
+            modal: !!modal,
+            titleEl: !!titleEl,
+            messageEl: !!messageEl,
+            okBtn: !!okBtn,
+            cancelBtn: !!cancelBtn
+        });
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        console.log(`[MODAL] Modal shown`);
+
+        const cleanup = () => {
+            console.log(`[MODAL] Cleanup called`);
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+
+        okBtn.onclick = (e) => {
+            console.log(`[MODAL] OK button clicked!`, e);
+            cleanup();
+            resolve(true);
+            console.log(`[MODAL] Resolved with TRUE`);
+        };
+
+        cancelBtn.onclick = (e) => {
+            console.log(`[MODAL] Cancel button clicked!`, e);
+            cleanup();
+            resolve(false);
+            console.log(`[MODAL] Resolved with FALSE`);
+        };
+
+        console.log(`[MODAL] Event handlers attached`);
+    });
+} // To handle product linking
 
 async function loadMedia() {
     if (!currentProjectId) return;
@@ -207,7 +440,7 @@ function renderMediaGrid() {
         };
 
         div.querySelector('.delete-media-btn').onclick = async () => {
-            if (!confirm(`Delete ${file.name}?`)) return;
+            if (!(await customConfirm('Delete File', `Delete ${file.name}?`))) return;
             await fetch(`/api/projects/${currentProjectId}/media/${file.name}`, { method: 'DELETE' });
             loadMedia();
         };
@@ -310,12 +543,15 @@ function renderProducts() {
                 // Bind Inputs
                 row.querySelector('.attr-name').oninput = (e) => {
                     currentProducts[index].attributes[idx].name = e.target.value;
+                    markConfigDirty();
                 };
                 row.querySelector('.attr-vals').oninput = (e) => {
                     currentProducts[index].attributes[idx].variants = e.target.value;
+                    markConfigDirty();
                 };
                 row.querySelector('.del-attr-btn').onclick = () => {
                     currentProducts[index].attributes.splice(idx, 1);
+                    markConfigDirty();
                     renderProducts(); // Re-render to update
                 };
                 attrContainer.appendChild(row);
@@ -327,6 +563,7 @@ function renderProducts() {
         template.querySelector('.add-attr-btn').onclick = () => {
             if (!currentProducts[index].attributes) currentProducts[index].attributes = [];
             currentProducts[index].attributes.push({ name: '', variants: '' });
+            markConfigDirty();
             renderProducts();
         };
 
@@ -345,35 +582,99 @@ function renderProducts() {
             knContainer.appendChild(pill);
         });
 
-        // Link Media Button
-        template.querySelector('.link-media-btn').onclick = () => {
-            openMediaSelector(index);
+
+
+
+
+        // Delete Product - use data attribute to avoid closure issues
+        const deleteBtn = template.querySelector('.delete-btn');
+        deleteBtn.setAttribute('data-product-index', index);
+        deleteBtn.onclick = async function () {
+            const idx = parseInt(this.getAttribute('data-product-index'));
+            await removeProduct(idx);
         };
 
-        // Price List Upload
-        const priceBtn = template.querySelector('.upload-price-btn');
-        const priceInput = template.querySelector('.upload-price-input');
+        // Price List & Knowledge Base Selection (New)
+        const priceSelect = template.querySelector('.price-list-select');
+        const knowledgeSelect = template.querySelector('.knowledge-base-select');
 
-        // Visual feedback if file exists
-        if (prod.price_list_file) {
-            priceBtn.classList.remove('bg-gray-700', 'text-gray-300');
-            priceBtn.classList.add('bg-emerald-900/40', 'text-emerald-400', 'border-emerald-500/50');
-            priceBtn.innerText = "📄 " + prod.price_list_file.split('/').pop();
+        // Helper to populate options
+        const populateMediaOptions = (selectEl, selectedValue) => {
+            selectEl.innerHTML = '<option value="">-- Select File --</option>';
+            currentMedia.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file.name;
+                option.text = file.name;
+                if (file.name === selectedValue) option.selected = true;
+                selectEl.appendChild(option);
+            });
+        };
+
+        populateMediaOptions(priceSelect, prod.price_list_file);
+        populateMediaOptions(knowledgeSelect, prod.knowledge_base_file);
+
+        priceSelect.onchange = (e) => {
+            currentProducts[index].price_list_file = e.target.value;
+        };
+        knowledgeSelect.onchange = (e) => {
+            currentProducts[index].knowledge_base_file = e.target.value;
+        };
+
+        // UI Helpers for Optimization
+        const addOptimizeBtn = (parent, type, fileGetter) => {
+            const container = document.createElement('div');
+            container.className = "flex gap-1 ml-2";
+
+            const btn = document.createElement('button');
+            btn.className = "text-xs bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded flex items-center gap-1";
+            btn.innerHTML = '<span>✨ Optimize</span>';
+            btn.onclick = () => optimizeProductFile(type, index, fileGetter());
+
+            const viewBtn = document.createElement('button');
+            viewBtn.className = "text-xs bg-gray-600 hover:bg-gray-500 text-white px-2 py-1 rounded flex items-center gap-1";
+            viewBtn.innerHTML = '<span>👁️ Result</span>';
+            viewBtn.onclick = () => viewOptimizationResult(type, index, fileGetter());
+
+            container.appendChild(btn);
+            container.appendChild(viewBtn);
+            parent.appendChild(container);
+        };
+
+        // Append Optimize Buttons (check for existing to prevent duplicates)
+        if (priceSelect.parentNode) {
+            // Check if wrapper already exists (to prevent duplicates on re-render)
+            let wrapper = priceSelect.nextElementSibling;
+            if (!wrapper || !wrapper.classList.contains('optimize-btn-wrapper')) {
+                wrapper = document.createElement('div');
+                wrapper.className = "flex items-center gap-2 mt-1 optimize-btn-wrapper";
+                priceSelect.parentNode.insertBefore(wrapper, priceSelect.nextSibling);
+            } else {
+                wrapper.innerHTML = ''; // Clear existing buttons
+            }
+            addOptimizeBtn(wrapper, 'price_list', () => currentProducts[index].price_list_file);
         }
 
-        priceBtn.onclick = () => priceInput.click();
-        priceInput.onchange = (e) => {
-            if (e.target.files.length > 0) {
-                uploadProductPriceList(e.target.files[0], index, priceBtn);
+        if (knowledgeSelect.parentNode) {
+            let wrapper = knowledgeSelect.nextElementSibling;
+            if (!wrapper || !wrapper.classList.contains('optimize-btn-wrapper')) {
+                wrapper = document.createElement('div');
+                wrapper.className = "flex items-center gap-2 mt-1 optimize-btn-wrapper";
+                knowledgeSelect.parentNode.insertBefore(wrapper, knowledgeSelect.nextSibling);
+            } else {
+                wrapper.innerHTML = ''; // Clear existing buttons
             }
-        };
-
-        // Delete Product
-        template.querySelector('.delete-btn').onclick = () => removeProduct(index);
+            addOptimizeBtn(wrapper, 'knowledge_base', () => currentProducts[index].knowledge_base_file);
+        }
 
         // Bind Basic Inputs
-        template.querySelector('.prod-name').oninput = (e) => currentProducts[index].name = e.target.value;
-        template.querySelector('.prod-desc').oninput = (e) => currentProducts[index].descriptions = e.target.value.split('\n').filter(l => l.trim());
+        template.querySelector('.prod-name').oninput = (e) => {
+            currentProducts[index].name = e.target.value;
+            markConfigDirty();
+        };
+        template.querySelector('.prod-desc').oninput = (e) => {
+            currentProducts[index].descriptions = e.target.value.split('\n').filter(x => x.trim());
+            markConfigDirty();
+        };
 
         list.appendChild(template);
     });
@@ -391,10 +692,25 @@ function addProduct() {
 }
 
 async function removeProduct(index) {
-    const confirmed = await showConfirm('Remove this product?');
-    if (!confirmed) return;
+    console.log(`[DEBUG] removeProduct called with index: ${index}`);
+    console.log(`[DEBUG] currentProducts before:`, currentProducts);
+
+    const confirmed = await customConfirm('Remove Product', 'Are you sure you want to remove this product?');
+    if (!confirmed) {
+        console.log(`[DEBUG] User cancelled deletion`);
+        return;
+    }
+
+    console.log(`[DEBUG] User confirmed deletion, removing product at index ${index}`);
     currentProducts.splice(index, 1);
+    console.log(`[DEBUG] currentProducts after splice:`, currentProducts);
+
+    // Re-render the UI
     renderProducts();
+
+    // IMPORTANT: Save to backend immediately
+    await saveWorkflow();
+    console.log(`[DEBUG] Product deleted and saved to backend`);
 }
 
 async function uploadProductPriceList(file, index, btn) {
@@ -429,8 +745,101 @@ async function uploadProductPriceList(file, index, btn) {
     }
 }
 
+async function optimizeProductFile(type, index, fileName) {
+    if (!fileName) {
+        showStatus('error', 'No File', 'Please select a file first.');
+        return;
+    }
+
+    if (!(await customConfirm('Optimize File', `Use AI to optimize and normalize "${fileName}"?\nThis will create a new file with standardized structure.`))) return;
+
+    showStatus('info', 'Optimizing...', 'Sending file to AI for analysis...');
+
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/optimize_file`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_name: fileName, type: type })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            if (type === 'price_list') currentProducts[index].price_list_file = data.optimized_file;
+            if (type === 'knowledge_base') currentProducts[index].knowledge_base_file = data.optimized_file;
+
+            renderProducts();
+            showStatus('success', 'Optimized!', `Created ${data.optimized_file}`);
+
+            if (data.preview) {
+                const modal = document.getElementById('output-modal');
+                const content = document.getElementById('output-content');
+                content.innerText = JSON.stringify(data.preview, null, 2);
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (e) {
+        showStatus('error', 'Optimization Failed', e.message);
+    }
+}
+
+async function viewOptimizationResult(type, index, fileName) {
+    if (!fileName) {
+        showStatus('error', 'No File', 'Please select a file first.');
+        return;
+    }
+
+    // Check if the selected file is already optimized
+    let targetFile = fileName;
+    if (!fileName.startsWith('optimized_')) {
+        // Try to find the optimized version by checking if it exists
+        // First, construct the expected optimized filename
+        const baseName = fileName.replace(/\.(csv|xlsx|xls|txt|pdf)$/i, '');
+        targetFile = `optimized_${baseName}.json`;
+    }
+
+    showStatus('info', 'Loading...', `Fetching content for ${targetFile}...`);
+
+    try {
+        // Use new read_file endpoint
+        const res = await fetch(`/api/projects/${currentProjectId}/read_file?file=${encodeURIComponent(targetFile)}`);
+
+        if (res.ok) {
+            const text = await res.text();
+            const modal = document.getElementById('output-modal');
+            const content = document.getElementById('output-content');
+            try {
+                // Try to format if JSON
+                content.innerText = JSON.stringify(JSON.parse(text), null, 2);
+            } catch (e) {
+                content.innerText = text;
+            }
+            document.getElementById('output-title').innerText = `Content: ${targetFile}`;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            showStatus('success', 'Loaded', 'File content displayed.');
+        } else {
+            // File not found - likely not optimized yet
+            if (targetFile !== fileName && !fileName.startsWith('optimized_')) {
+                // The file hasn't been optimized yet
+                const shouldOptimize = await customConfirm(
+                    'File Not Optimized',
+                    `The file "${fileName}" hasn't been optimized yet. Click "Optimize" first to create the optimized version, then use "View Result".`
+                );
+                throw new Error("File not optimized yet. Click 'Optimize' button first.");
+            } else {
+                const errorText = await res.text();
+                throw new Error(errorText || "File not found");
+            }
+        }
+    } catch (e) {
+        showStatus('error', 'View Failed', e.message);
+    }
+}
+
 // --- PRICE VIEW LOGIC ---
-let currentPriceCache = [];
 
 function viewPriceCache() {
     const modal = document.getElementById('price-modal');
@@ -515,7 +924,6 @@ async function syncPrices() {
 }
 
 // --- CONFIG MODAL LOGIC ---
-let currentHeaders = []; // Store sheet headers
 
 async function openConfig(id) {
     currentProjectId = id; // Fix: Set global variable
@@ -556,6 +964,10 @@ async function openConfig(id) {
 
             const wesender = project.wesendit_config ? JSON.parse(project.wesendit_config) : {};
             document.getElementById('int-wesender-key').value = wesender.api_key || '';
+            document.getElementById('int-wesender-url').value = wesender.api_url || '';
+
+            const pipedrive = project.pipedrive_config ? JSON.parse(project.pipedrive_config) : {};
+            document.getElementById('int-pipedrive-token').value = pipedrive.api_token || '';
         } catch (e) {
             console.warn("Failed to parse integrations config", e);
         }
@@ -577,6 +989,9 @@ async function openConfig(id) {
         } catch (e) {
             currentProducts = [];
         }
+
+        // Load media files before rendering products (so dropdowns are populated)
+        await loadMedia();
         renderProducts();
 
         // Workflow - Now Drawflow Object
@@ -682,7 +1097,11 @@ async function saveConfig() {
             from_name: document.getElementById('int-smtp-from').value
         },
         wesendit_config: {
-            api_key: document.getElementById('int-wesender-key').value
+            api_key: document.getElementById('int-wesender-key').value,
+            api_url: document.getElementById('int-wesender-url').value
+        },
+        pipedrive_config: {
+            api_token: document.getElementById('int-pipedrive-token').value
         }
     };
 
@@ -698,6 +1117,7 @@ async function saveConfig() {
 
         // closeConfig(); // User requested to keep it open to test connections
         showStatus('success', 'Saved!', 'Project configuration updated successfully.');
+        markConfigClean();
         // fetchProjects(); // Background refresh only? or maybe skipping to avoid grid re-render flickering
 
         // Update local cache of this project in the grid list without full reload?
@@ -741,7 +1161,10 @@ async function fetchProjects() {
             grid.innerHTML = data.projects.map(p => `
                         <div class="bg-gray-800 rounded-xl border border-gray-700 p-6 hover:border-blue-500 transition group relative overflow-hidden bg-gradient-to-br from-gray-800 to-gray-800/50">
                             <div class="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition flex gap-2">
-                                 <button onclick="deleteProject('${p.id}')" class="text-red-400 hover:text-red-300 bg-gray-900/50 p-1.5 rounded hover:bg-red-900/40 transition">🗑️</button>
+                                 <button onclick="renameProject('${p.id}', '${(p.name || 'Unnamed').replace(/'/g, "\\'")}')"
+                                    class="text-yellow-400 hover:text-yellow-300 bg-gray-900/50 p-1.5 rounded hover:bg-yellow-900/40 transition" title="Rename">✏️</button>
+                                 <button onclick="duplicateProject('${p.id}')" class="text-blue-400 hover:text-blue-300 bg-gray-900/50 p-1.5 rounded hover:bg-blue-900/40 transition" title="Duplicate">📋</button>
+                                 <button onclick="deleteProject('${p.id}')" class="text-red-400 hover:text-red-300 bg-gray-900/50 p-1.5 rounded hover:bg-red-900/40 transition" title="Delete">🗑️</button>
                             </div>
                             <div class="flex items-center justify-between mb-4">
                                 <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold">
@@ -778,7 +1201,6 @@ async function fetchProjects() {
 }
 
 async function runProject(id) {
-    // Simplified run (test)
     const btn = event.target;
     const originalText = btn.innerText;
     btn.innerText = "Running...";
@@ -786,13 +1208,17 @@ async function runProject(id) {
     btn.classList.add('opacity-70');
 
     try {
-        const res = await fetch(`/api/projects/${id}/test`, { method: 'POST' });
+        const res = await fetch(`/api/projects/${id}/run`, { method: 'POST' });
         const data = await res.json();
 
-        if (data.success) {
-            showStatus('success', 'Workflow Dry Run Success', data.message, data.details);
+        if (data.status === 'completed') {
+            showStatus('success', 'Workflow Completed', `All ${(data.log || []).length} nodes executed successfully.`);
+        } else if (data.status === 'error' || data.status === 'failed') {
+            let errMsg = data.message || 'Execution failed';
+            if (data.traceback) errMsg += '\n' + data.traceback.slice(-500);
+            showStatus('error', 'Workflow Failed', errMsg);
         } else {
-            showStatus('error', 'Workflow Failed', data.message, data.trace);
+            showStatus('info', 'Workflow Done', data.message || JSON.stringify(data).slice(0, 300));
         }
     } catch (err) {
         showStatus('error', 'System Error', err.toString());
@@ -800,6 +1226,28 @@ async function runProject(id) {
         btn.innerText = originalText;
         btn.disabled = false;
         btn.classList.remove('opacity-70');
+    }
+}
+
+async function renameProject(id, currentName) {
+    const newName = prompt('Rinomina il progetto:', currentName);
+    if (!newName || newName === currentName) return;
+
+    try {
+        const res = await fetch(`/api/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        });
+        if (res.ok) {
+            showStatus('success', 'Renamed', `Project renamed to "${newName}"`);
+            // Reload projects list to reflect the change
+            if (typeof fetchProjects === 'function') fetchProjects();
+        } else {
+            showStatus('error', 'Error', 'Failed to rename project');
+        }
+    } catch (err) {
+        showStatus('error', 'Error', err.toString());
     }
 }
 
@@ -971,7 +1419,88 @@ function handleConfirmDelete() {
         });
 }
 
+async function duplicateProject(projectId) {
+    try {
+        showStatus('info', 'Duplicating...', 'Creating a copy of the project...');
+        const res = await fetch(`/api/projects/${projectId}/duplicate`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+            showStatus('success', 'Project Duplicated!', `New project "${data.name}" created.`);
+            fetchProjects();
+        } else {
+            showStatus('error', 'Duplicate Failed', data.detail || 'Unknown error');
+        }
+    } catch (e) {
+        showStatus('error', 'Duplicate Failed', e.message);
+    }
+}
+
 // --- GLOBAL SETTINGS LOGIC ---
+async function testGeminiConnection() {
+    const apiKey = document.getElementById('g-api-key').value; // Corrected ID from 'setting-google-api-key'
+    if (!apiKey) {
+        showStatus('error', 'Missing Key', 'Please enter an API Key first.');
+        return;
+    }
+
+    showStatus('info', 'Testing AI...', 'Connecting to Gemini...');
+
+    try {
+        const res = await fetch('/api/test_gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey })
+        });
+
+        const data = await res.json();
+        console.log("Gemini Test Response:", data); // Debugging
+
+        if (data.success) {
+            showStatus('success', 'Connected!', 'Gemini AI is responding: ' + (data.response || 'OK'));
+        } else {
+            const msg = data.message || data.detail || 'Unknown error occurred';
+            showStatus('error', 'Connection Failed', msg);
+        }
+    } catch (e) {
+        console.error("Gemini Test Fetch Error:", e);
+        showStatus('error', 'Error', e.message);
+    }
+}
+
+async function saveGlobalSettings() {
+    const btn = document.getElementById('save-settings-btn'); // Assuming a save button exists
+    const originalText = btn.innerText;
+    btn.innerText = "Saving...";
+    btn.disabled = true;
+
+    const payload = {
+        service_account_json: document.getElementById('g-sa-json').value,
+        google_api_key: document.getElementById('g-api-key').value,
+        default_sheet_id: document.getElementById('g-sheet-id').value
+    };
+
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showStatus('success', 'Settings Saved', 'Global settings have been updated.');
+            closeSettings();
+        } else {
+            const errorData = await res.json();
+            showStatus('error', 'Save Failed', errorData.message || 'Failed to save settings.');
+        }
+    } catch (e) {
+        showStatus('error', 'Error', e.message);
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
 async function openSettings() {
     try {
         const res = await fetch('/api/settings');
@@ -997,8 +1526,52 @@ function closeSettings() {
 
 // --- WORKFLOW BUILDER LOGIC ---
 // --- VISUAL WORKFLOW BUILDER (DRAWFLOW) ---
-let editor = null;
 let currentNodeId = null;
+
+// --- UNDO / REDO SYSTEM ---
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 50;
+let _undoRedoActive = false; // flag to prevent recursive snapshots during undo/redo
+
+function snapshotWorkflow() {
+    if (!editor || _undoRedoActive) return;
+    try {
+        const state = JSON.stringify(editor.export());
+        // Don't push duplicate states
+        if (undoStack.length > 0 && undoStack[undoStack.length - 1] === state) return;
+        undoStack.push(state);
+        if (undoStack.length > MAX_UNDO) undoStack.shift();
+        redoStack.length = 0; // clear redo on new action
+    } catch (e) { console.warn('Snapshot failed:', e); }
+}
+
+function undoWorkflow() {
+    if (!editor || undoStack.length < 2) return; // need at least 2: current + previous
+    _undoRedoActive = true;
+    try {
+        const currentState = undoStack.pop();
+        redoStack.push(currentState);
+        const prevState = undoStack[undoStack.length - 1];
+        const parsed = JSON.parse(prevState);
+        editor.import(parsed);
+        showToast('info', 'Undo', 'Azione annullata');
+    } catch (e) { console.warn('Undo failed:', e); }
+    _undoRedoActive = false;
+}
+
+function redoWorkflow() {
+    if (!editor || redoStack.length === 0) return;
+    _undoRedoActive = true;
+    try {
+        const nextState = redoStack.pop();
+        undoStack.push(nextState);
+        const parsed = JSON.parse(nextState);
+        editor.import(parsed);
+        showToast('info', 'Redo', 'Azione ripristinata');
+    } catch (e) { console.warn('Redo failed:', e); }
+    _undoRedoActive = false;
+}
 
 function initDrawflow() {
     const id = document.getElementById("drawflow");
@@ -1010,10 +1583,31 @@ function initDrawflow() {
     editor.zoom_value = 0.1;
     editor.start();
 
+    // Init inline rename on double-click
+    initInlineRename();
+    // Init lasso rectangle selection
+    initLassoSelect();
+
     // Event Listeners
     editor.on('nodeCreated', function (id) {
         console.log("Node created " + id);
+        snapshotWorkflow();
     });
+
+    // Snapshot on structure changes
+    editor.on('nodeRemoved', function (id) { snapshotWorkflow(); });
+    editor.on('connectionCreated', function (info) { snapshotWorkflow(); });
+    editor.on('connectionRemoved', function (info) { snapshotWorkflow(); });
+
+    // Debounced snapshot on node move (fires many times during drag)
+    let _moveTimer = null;
+    editor.on('nodeMoved', function (id) {
+        clearTimeout(_moveTimer);
+        _moveTimer = setTimeout(() => snapshotWorkflow(), 500);
+    });
+
+    // Take initial snapshot
+    setTimeout(() => snapshotWorkflow(), 500);
 
     // Fix: Explicit Wheel Event for Zoom to prevent scrolling
     const container = document.getElementById("drawflow");
@@ -1038,6 +1632,8 @@ function initDrawflow() {
 
     editor.on('nodeSelected', function (id) {
         currentNodeId = id;
+        // Don't open sidebar if inline renaming is in progress
+        if (window._isInlineRenaming) return;
         showNodeConfig(id);
     });
 
@@ -1046,6 +1642,149 @@ function initDrawflow() {
         document.getElementById('node-config-panel').classList.add('hidden');
         document.getElementById('node-config-panel').classList.remove('flex');
     });
+
+    // Connection Deletion + Undo/Redo Handler
+    document.addEventListener('keydown', function (e) {
+        // Undo: Ctrl+Z (or Cmd+Z on Mac)
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+            if (!e.target.closest('input, textarea, select')) {
+                e.preventDefault();
+                undoWorkflow();
+                return;
+            }
+        }
+        // Redo: Ctrl+Shift+Z (or Cmd+Shift+Z on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+            if (!e.target.closest('input, textarea, select')) {
+                e.preventDefault();
+                redoWorkflow();
+                return;
+            }
+        }
+        // Delete connection
+        if ((e.key === 'Delete' || e.key === 'Backspace') && editor.connection_selected) {
+            const conn = editor.connection_selected;
+            editor.removeSingleConnection(conn.output_id, conn.input_id, conn.output_class, conn.input_class);
+        }
+    });
+
+
+    // --- CONTEXT MENU LOGIC ---
+    editor.on('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Check if clicked on a node
+        const nodeEl = e.target.closest('.drawflow-node');
+        if (nodeEl) {
+            const nodeId = nodeEl.id.replace('node-', '');
+            // Select it first
+            currentNodeId = nodeId;
+
+            // Show custom menu
+            showContextMenu(e.clientX, e.clientY, nodeId);
+        } else {
+            hideContextMenu();
+        }
+    });
+
+    // Hide menu on click elsewhere
+    document.addEventListener('click', hideContextMenu);
+
+    // Inject Menu HTML if not present
+    if (!document.getElementById('drawflow-context-menu')) {
+        const menu = document.createElement('div');
+        menu.id = 'drawflow-context-menu';
+        menu.className = 'hidden fixed bg-gray-800 border border-gray-700 shadow-xl rounded-lg py-1 z-[200] min-w-[150px]';
+        menu.innerHTML = `
+            <button onclick="duplicateNode()" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white transition flex items-center gap-2">
+                <span>📄</span> Duplicate
+            </button>
+            <button onclick="toggleNodeActive()" class="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition flex items-center gap-2">
+                <span id="ctx-disable-icon">🚫</span> <span id="ctx-disable-text">Disable</span>
+            </button>
+            <div class="h-px bg-gray-700 my-1"></div>
+            <button onclick="deleteSelectedNode()" class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-900/30 transition flex items-center gap-2">
+                <span>🗑️</span> Delete
+            </button>
+        `;
+        document.body.appendChild(menu);
+    }
+}
+
+let contextNodeId = null;
+
+function showContextMenu(x, y, nodeId) {
+    contextNodeId = nodeId;
+    const menu = document.getElementById('drawflow-context-menu');
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.classList.remove('hidden');
+
+    // Update Disable/Enable Text
+    const node = editor.getNodeFromId(nodeId);
+    const isDisabled = node.data.config && node.data.config.disabled;
+    const activeText = document.getElementById('ctx-disable-text');
+    const activeIcon = document.getElementById('ctx-disable-icon');
+
+    if (activeText) activeText.innerText = isDisabled ? "Enable" : "Disable";
+    if (activeIcon) activeIcon.innerText = isDisabled ? "✅" : "🚫";
+}
+
+function hideContextMenu() {
+    const menu = document.getElementById('drawflow-context-menu');
+    if (menu) menu.classList.add('hidden');
+}
+
+function duplicateNode() {
+    if (!contextNodeId) return;
+    const node = editor.getNodeFromId(contextNodeId);
+    if (!node) return;
+
+    // Clone Data
+    const newData = JSON.parse(JSON.stringify(node.data));
+    // Reset Name? Or keep copy?
+    if (newData.config && newData.config.node_name) {
+        newData.config.node_name = newData.config.node_name + "_copy";
+    }
+
+    // Add Node slightly offset
+    const pos_x = node.pos_x + 50;
+    const pos_y = node.pos_y + 50;
+
+    // Count inputs/outputs (addNode expects numbers, not connection objects)
+    const numInputs = Object.keys(node.inputs || {}).length;
+    const numOutputs = Object.keys(node.outputs || {}).length;
+
+    editor.addNode(node.name, numInputs, numOutputs, pos_x, pos_y, node.class, newData, node.html);
+    hideContextMenu();
+}
+
+function toggleNodeActive() {
+    if (!contextNodeId) return;
+    const node = editor.getNodeFromId(contextNodeId);
+    if (!node) return;
+
+    // Init config if missing
+    if (!node.data.config) node.data.config = {};
+
+    // Toggle
+    node.data.config.disabled = !node.data.config.disabled;
+
+    // Visual update
+    const el = document.getElementById('node-' + contextNodeId);
+    if (el) {
+        if (node.data.config.disabled) {
+            el.style.opacity = '0.5';
+            el.style.filter = 'grayscale(100%)';
+        } else {
+            el.style.opacity = '1';
+            el.style.filter = 'none';
+        }
+    }
+
+    editor.updateNodeDataFromId(contextNodeId, { config: node.data.config });
+    hideContextMenu();
 }
 
 // --- DRAG & DROP LOGIC ---
@@ -1138,7 +1877,7 @@ function addNodeToTheCanvas(type, pos_x, pos_y) {
                     <p>SMTP/Gmail</p>
                 </div>
             </div>`;
-        inputs = 1; outputs = 0;
+        inputs = 1; outputs = 1;
     } else if (safeType === 'SEND_WHATSAPP') {
         html = `
             <div class="node-content wa-node">
@@ -1147,11 +1886,45 @@ function addNodeToTheCanvas(type, pos_x, pos_y) {
                     <p>WeSender</p>
                 </div>
             </div>`;
-        inputs = 1; outputs = 0;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'HTML_PREVIEW') {
+        html = `
+            <div class="node-content preview-node" style="border-color:#10b981;">
+                <div class="title-box" style="background:linear-gradient(135deg,#065f46,#047857);">👁️ HTML Preview</div>
+                <div class="box">
+                    <p>Live Preview</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'KNOWLEDGE') {
+        html = `
+            <div class="node-content knowledge-node" style="border-color:#14b8a6;">
+                <div class="title-box" style="background:linear-gradient(135deg,#134e4a,#0f766e);">📚 Knowledge</div>
+                <div class="box">
+                    <p>Data Source</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'GOOGLE_SHEET') {
+        html = `
+            <div class="node-content sheet-node" style="border-color:#34a853;">
+                <div class="title-box" style="background:linear-gradient(135deg,#188038,#137333);">📊 Google Sheet</div>
+                <div class="box">
+                    <p>Read/Filter Rows</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'PIPEDRIVE') {
+        html = `
+            <div class="node-content pipedrive-node" style="border-color:#7c3aed;">
+                <div class="title-box" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);">🔗 Pipedrive</div>
+                <div class="box">
+                    <p>CRM Sync</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
     } else {
         console.warn("Unknown Node Type:", type);
-        // Fallback for visual debugging but maybe we should prevent adding?
-        // Let's keep it but make it clear
         html = `<div class="node-content unknown-node bg-red-900/50 border border-red-500 rounded p-2">
                     <div class="title-box text-red-300">⚠️ Unknown</div>
                     <div class="text-xs text-red-200">Type: ${type}</div>
@@ -1178,6 +1951,77 @@ async function deleteSelectedNode() {
 }
 
 // --- CONFIG PANEL LOGIC ---
+
+// Helper to get AI Nodes
+const getAiNodes = () => {
+    const nodes = [];
+
+    const search = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+
+        // Check if this object is an AI Node
+        if (obj.name === 'AI_COMPLETION' && obj.data && obj.data.config) {
+            nodes.push({
+                id: obj.id,
+                name: (obj.data.config.output_var && obj.data.config.output_var.trim()) ? obj.data.config.output_var.trim() : (obj.data.config.node_name || `AI_Node_${obj.id}`),
+                schema: obj.data.config.schema_instruction || ''
+            });
+        }
+
+        // Recurse
+        Object.values(obj).forEach(child => search(child));
+    };
+
+    if (editor && editor.drawflow) {
+        search(editor.drawflow);
+    }
+
+    // Deduplicate
+    const unique = [];
+    const ids = new Set();
+    nodes.forEach(n => {
+        if (!ids.has(n.id)) {
+            unique.push(n);
+            ids.add(n.id);
+        }
+    });
+
+    return unique;
+};
+
+const renderJsonPicker = (targetId) => {
+    const aiNodes = getAiNodes();
+    if (aiNodes.length === 0) return '';
+
+    let options = '';
+    aiNodes.forEach(node => {
+        // Main Output Var
+        options += `<option value="${node.name}" class="font-bold">📦 ${node.name} (Full JSON)</option>`;
+
+        // Try to extract keys from schema instruction (simple regex)
+        // Looking for "keys: key1, key2" or JSON structure in comments
+        try {
+            // Regex to find "keys: ..." or simple JSON object in text
+            // formatting: "keys: name, date, total" -> ["name", "date", "total"]
+            const keysMatch = node.schema.match(/keys:\s*([a-zA-Z0-9_,\s]+)/i);
+            if (keysMatch) {
+                const keys = keysMatch[1].split(',').map(k => k.trim());
+                keys.forEach(k => {
+                    options += `<option value="${node.name}.${k}">  └─ ${k}</option>`;
+                });
+            }
+        } catch (e) { }
+    });
+
+    const html = `
+            <select onchange="insertVar('${targetId}', this.value); this.value='';" class="bg-gray-700 text-xs text-green-300 border border-gray-600 rounded px-1 ml-2 max-w-[120px] cursor-pointer" title="Insert AI Output">
+                <option value="">+ AI Json</option>
+                ${options}
+            </select>
+        `;
+    return html;
+};
+
 function showNodeConfig(id) {
     const node = editor.getNodeFromId(id);
     const type = node.name;
@@ -1190,9 +2034,21 @@ function showNodeConfig(id) {
 
     content.innerHTML = ''; // Clear previous
 
+    // Helper function to generate node name input field
+    const nodeNameField = (defaultName) => `
+        <div class="mb-3 pb-3 border-b border-gray-700">
+            <label class="block text-xs text-gray-400 mb-1">📝 Node Name</label>
+            <input id="cfg-node-name" type="text" 
+                   class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" 
+                   value="${data.node_name || defaultName}" 
+                   placeholder="Enter custom node name">
+            <p class="text-[10px] text-gray-500 mt-1">This name will be used in JSON outputs (e.g., ${defaultName}_content)</p>
+        </div>
+    `;
+
     if (type === 'TRIGGER') {
         const triggerType = data.trigger_type || 'cron';
-        content.innerHTML = `
+        content.innerHTML = nodeNameField(`Trigger_${id}`) + `
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Trigger Type</label>
                 <select id="cfg-type" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs outline-none focus:border-blue-500" 
@@ -1216,7 +2072,7 @@ function showNodeConfig(id) {
                     <option value="">Custom...</option>
                     <option value="* * * * *">Every Minute</option>
                     <option value="*/5 * * * * ">Every 5 Minutes</option>
-        < option value = "*/10 * * * *" > Every 10 Minutes</option >
+                    <option value="*/10 * * * *">Every 10 Minutes</option>
                     <option value="*/15 * * * *">Every 15 Minutes</option>
                     <option value="*/30 * * * *">Every 30 Minutes</option>
                     <option value="0 * * * *">Every Hour</option>
@@ -1259,12 +2115,13 @@ function showNodeConfig(id) {
     `;
     }
     else if (type === 'AI_COMPLETION') {
-        content.innerHTML = `
-        < div >
+        content.innerHTML = nodeNameField(`AI_Node_${id}`) + `
+        <div>
                 <label class="block text-xs text-gray-400 mb-1">Model Version</label>
                 <select id="cfg-model" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs outline-none focus:border-blue-500 mb-2">
-                    <option value="gemini-2.0-flash" ${data.model === 'gemini-2.0-flash' ? 'selected' : ''}>Gemini 2.0 Flash (Fast)</option>
-                    <option value="gemini-1.5-pro" ${data.model === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro (Powerful)</option>
+                    <option value="gemini-3-flash-preview" ${data.model === 'gemini-3-flash-preview' || !data.model ? 'selected' : ''}>Gemini 3 Flash (Fast)</option>
+                    <option value="gemini-3-pro-preview" ${data.model === 'gemini-3-pro-preview' ? 'selected' : ''}>Gemini 3 Pro (Powerful)</option>
+                    <option value="gemini-2.0-flash" ${data.model === 'gemini-2.0-flash' ? 'selected' : ''}>Gemini 2.0 Flash (Legacy)</option>
                 </select>
 
                 <label class="block text-xs text-gray-400 mb-1">System Instruction</label>
@@ -1283,6 +2140,7 @@ function showNodeConfig(id) {
                         <option value="">+ Var</option>
                         ${renderVarPicker(null, 'select')}
                     </select>
+                    ${renderJsonPicker('cfg-html')}
                 </div>
                 <textarea id="cfg-html" rows="4" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder="<html><body>...{{ai_output}}...</body></html>">${data.html_template || ''}</textarea>
                 
@@ -1322,6 +2180,7 @@ function showNodeConfig(id) {
                     <span>User Prompt</span>
                     <div class="flex items-center">
                         ${renderVarPicker('cfg-user')}
+                        ${renderJsonPicker('cfg-user')}
                         <button onclick="startDictation(this, 'cfg-user')" class="text-purple-400 hover:text-purple-300 text-xs ml-2">🎤</button>
                     </div>
                 </label>
@@ -1335,13 +2194,16 @@ function showNodeConfig(id) {
     }
     else if (type === 'HTML_TEMPLATE') {
         content.innerHTML = `
-        < div >
+        <div>
                 <label class="block text-xs text-gray-400 mb-1 flex justify-between">
                     <span>HTML Template</span>
-                    ${renderVarPicker('cfg-tpl')}
+                    <div class="flex items-center">
+                         ${renderVarPicker('cfg-tpl')}
+                         ${renderJsonPicker('cfg-tpl')}
+                    </div>
                 </label>
                 <textarea id="cfg-tpl" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono focus:border-orange-500 outline-none" rows="8">${data.template || ''}</textarea>
-            </div >
+            </div>
         <div>
             <label class="block text-xs text-gray-400 mb-1">Output Variable</label>
             <input id="cfg-out" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.output_var || 'html_content'}">
@@ -1349,53 +2211,290 @@ function showNodeConfig(id) {
     `;
     }
     else if (type === 'SEND_EMAIL') {
-        content.innerHTML = `
-        < div >
-                <label class="block text-xs text-gray-400 mb-1">To Column (Select)</label>
+        content.innerHTML = nodeNameField(`Email_${id}`) + `
+        <div>
+                <label class="block text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>To (Email)</span>
+                    <div class="flex items-center">
+    
+                        ${renderJsonPicker('cfg-to')}
+                    </div>
+                </label>
                  <div class="flex gap-2">
-                    <input id="cfg-to" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.to_field || 'email'}" placeholder="Enter column name">
+                    <input id="cfg-to" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.to_field || ''}" placeholder="email@example.com or {{variable}}">
                     ${renderVarPicker('cfg-to')}
                  </div>
-                 <p class="text-[10px] text-gray-500 mt-1">Select from sheet headers</p>
-            </div >
+                 <p class="text-[10px] text-gray-500 mt-1">Enter email directly or use a variable</p>
+            </div>
                 <div>
                 <label class="block text-xs text-gray-400 mb-1 flex justify-between">
                     <span>Subject</span>
-                    ${renderVarPicker('cfg-subj')}
+                    <div class="flex items-center">
+                        ${renderVarPicker('cfg-subj')}
+                        ${renderJsonPicker('cfg-subj')}
+                    </div>
                 </label>
                 <input id="cfg-subj" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.subject || ''}">
             </div>
                 <div>
-                <label class="block text-xs text-gray-400 mb-1">Body (Variable from previous step)</label>
+                <label class="block text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>Body (Variable from previous step)</span>
+                     <div class="flex items-center">
+                        ${renderJsonPicker('cfg-body')}
+                    </div>
+                </label>
                 <input id="cfg-body" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.body_var || 'html_content'}">
+            </div>
+
+            <hr class="border-gray-700 my-4">
+            <h4 class="text-xs font-semibold text-yellow-400 mb-2">🖼️ Email Header</h4>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Logo URL (image link)</label>
+                <input id="cfg-email-logo" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.header_logo || ''}" placeholder="https://example.com/logo.png">
+                <p class="text-xs text-amber-400/70 mt-1">⚠️ Usa PNG o JPG — i client email non supportano WebP</p>
+            </div>
+            <div class="mt-2">
+                <label class="block text-xs text-gray-400 mb-1">Header Text (brand name / tagline)</label>
+                <input id="cfg-email-header" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.header_text || ''}" placeholder="Company Name">
+            </div>
+
+            <hr class="border-gray-700 my-4">
+            <h4 class="text-xs font-semibold text-yellow-400 mb-2">✍️ Email Footer / Signature</h4>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Footer HTML (signature, links, etc.)</label>
+                <textarea id="cfg-email-footer" rows="4" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder="<p>Cordiali saluti,<br>Nome Cognome</p>">${data.footer_html || ''}</textarea>
             </div>
     `;
     }
     else if (type === 'SEND_WHATSAPP') {
-        content.innerHTML = `
-        < div >
+        content.innerHTML = nodeNameField(`WhatsApp_${id}`) + `
+        <div>
                 <label class="block text-xs text-gray-400 mb-1">Phone Column</label>
                  <div class="flex gap-2">
                     <input id="cfg-phone" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.phone_field || 'telefono'}" placeholder="Column name">
                     ${renderVarPicker('cfg-phone')}
                  </div>
-            </div >
+            </div>
         <div>
-            <label class="block text-xs text-gray-400 mb-1">Message (Variable)</label>
+            <label class="block text-xs text-gray-400 mb-1 flex justify-between">
+                <span>Message (Variable)</span>
+                <div class="flex items-center">
+                    ${renderJsonPicker('cfg-msg')}
+                </div>
+            </label>
             <input id="cfg-msg" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.message_var || 'ai_result'}">
         </div>
     `;
     }
+    else if (type === 'HTML_PREVIEW') {
+        content.innerHTML = nodeNameField(`Preview_${id}`) + `
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Source Variable</label>
+            <div class="flex gap-1">
+                <input id="cfg-preview-src" type="text" class="flex-1 bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.source_var || 'html_content'}" placeholder="Variable name">
+                ${renderJsonPicker('cfg-preview-src')}
+            </div>
+            <p class="text-[10px] text-gray-500 mt-1">The variable containing the final HTML output</p>
+        </div>
+        <div class="mt-3">
+            <button onclick="previewHtmlOutput()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs text-white font-medium shadow-lg flex items-center justify-center gap-2">
+                👁️ Open Live Preview
+            </button>
+        </div>
+    `;
+    }
+    else if (type === 'KNOWLEDGE') {
+        content.innerHTML = nodeNameField(`Knowledge_${id}`) + `
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">📝 Manual Knowledge Text</label>
+            <textarea id="cfg-knowledge-text" rows="5" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder="Paste knowledge text here...">${data.knowledge_text || ''}</textarea>
+        </div>
+        <div class="mt-3">
+            <label class="block text-xs text-gray-400 mb-1">📄 Or Upload File (PDF, Excel, CSV, TXT)</label>
+            <div class="flex gap-2">
+                <input id="cfg-knowledge-file" type="file" accept=".pdf,.xlsx,.xls,.csv,.txt,.json,.md" class="flex-1 bg-gray-800 border border-gray-600 rounded p-1 text-white text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-teal-600 file:text-white hover:file:bg-teal-500" onchange="uploadKnowledgeFile(this, '${id}')">
+            </div>
+            <p class="text-[10px] text-gray-500 mt-1">File will be normalized to text and stored</p>
+        </div>
+        <div id="knowledge-preview-${id}" class="mt-2 ${data.knowledge_text ? '' : 'hidden'}">
+            <label class="block text-xs text-gray-400 mb-1">📋 Current Knowledge (${data.knowledge_text ? data.knowledge_text.length : 0} chars)</label>
+            <div class="bg-gray-900 border border-gray-700 rounded p-2 max-h-32 overflow-y-auto text-[10px] text-gray-400 font-mono">${(data.knowledge_text || '').substring(0, 500)}${(data.knowledge_text || '').length > 500 ? '...' : ''}</div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Output Variable</label>
+            <input id="cfg-knowledge-out" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.output_var || 'knowledge_text'}" placeholder="Variable name">
+        </div>
+    `;
+    }
+    else if (type === 'GOOGLE_SHEET') {
+        content.innerHTML = nodeNameField(`Sheet_${id}`) + `
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Google Sheet ID</label>
+            <div class="flex gap-2">
+                <input id="cfg-sheet-id" type="text" class="flex-1 bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.sheet_id || ''}" placeholder="Leave empty for Project Default">
+                <button onclick="openDrivePicker((id, doc) => { document.getElementById('cfg-sheet-id').value = id; const nameEl = document.getElementById('cfg-sheet-name'); if(nameEl) nameEl.value = doc.name || doc[google.picker.Document.NAME] || ''; updateSheetLink(); })" class="bg-gray-700 hover:bg-gray-600 text-white px-2 rounded border border-gray-600" title="Browse Drive">📂</button>
+                <a id="cfg-sheet-link" href="https://docs.google.com/spreadsheets/d/${data.sheet_id || ''}" target="_blank" class="bg-green-700 hover:bg-green-600 text-white px-2 rounded border border-green-600 flex items-center ${data.sheet_id ? '' : 'opacity-40 pointer-events-none'}" title="Open in Google Sheets">🔗</a>
+            </div>
+            <input id="cfg-sheet-name" type="text" class="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-green-400 text-xs mt-1.5" value="${data.sheet_name || ''}" placeholder="File name (auto-filled)" readonly>
+            <p class="text-[10px] text-gray-500 mt-1">Override Project Default if needed</p>
+        </div>
+        <div class="mt-3">
+             <label class="block text-xs text-gray-400 mb-1">Sheet Range / Name</label>
+             <input id="cfg-sheet-range" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.sheet_range || 'Foglio1!A:Z'}" placeholder="Foglio1!A:Z">
+        </div>
+        
+        <div class="mt-4 border-t border-gray-700 pt-4">
+             <label class="block text-xs font-bold text-gray-300 mb-2">Filter Rows</label>
+             <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[10px] text-gray-500 mb-1">Column Name</label>
+                    <input id="cfg-filter-col" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.filter_column || 'preventivo_inviato'}" placeholder="Column Header">
+                </div>
+                <div>
+                     <label class="block text-[10px] text-gray-500 mb-1">Value (Leave empty for Empty Check)</label>
+                    <input id="cfg-filter-val" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.filter_value || ''}" placeholder="Value to match">
+                </div>
+             </div>
+             <p class="text-[10px] text-gray-500 mt-1">If Value is empty, it selects rows where the column is empty.</p>
+        </div>
+
+        <div class="mt-4">            <label class="block text-xs text-gray-400 mb-1">Output Variable</label>            <input id="cfg-out" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.output_var || 'sheet_row'}" placeholder="Variable name">        </div>
+
+        <div class="mt-4 border-t border-gray-700 pt-4">
+             <label class="block text-xs font-bold text-green-400 mb-2">📝 Post-Process Update</label>
+             <p class="text-[10px] text-gray-500 mb-2">After reading, update this column in the processed row.</p>
+             <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-[10px] text-gray-500 mb-1">Column Name</label>
+                    <input id="cfg-update-col" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.update_column || ''}" placeholder="e.g. preventivo_inviato">
+                </div>
+                <div>
+                     <label class="block text-[10px] text-gray-500 mb-1">Value to Write</label>
+                    <input id="cfg-update-val" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.update_value || ''}" placeholder="e.g. si">
+                </div>
+             </div>
+        </div>
+
+        <div class="mt-4 border-t border-gray-700 pt-4">
+             <label class="block text-xs font-bold text-yellow-400 mb-2">🔢 Auto-Counter</label>
+             <p class="text-[10px] text-gray-500 mb-2">Auto-increment: finds max value in column + 1, writes to the current row.</p>
+             <div>
+                <label class="block text-[10px] text-gray-500 mb-1">Counter Column Name</label>
+                <input id="cfg-counter-col" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.counter_column || ''}" placeholder="e.g. preventivo_numero">
+             </div>
+        </div>
+    `;
+    }
+    else if (type === 'PIPEDRIVE') {
+        content.innerHTML = nodeNameField(`Pipedrive_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Search by email → Create or Update person in Pipedrive CRM</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Email Field</label>
+            <div class="flex gap-2">
+                <input id="cfg-pd-email" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.email_field || '{{email}}'}" placeholder="{{email}}">
+                ${renderVarPicker('cfg-pd-email')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Name Field</label>
+            <div class="flex gap-2">
+                <input id="cfg-pd-name" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.name_field || '{{nome}}'}" placeholder="{{nome}}">
+                ${renderVarPicker('cfg-pd-name')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Phone Field</label>
+            <div class="flex gap-2">
+                <input id="cfg-pd-phone" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.phone_field || '{{telefono}}'}" placeholder="{{telefono}}">
+                ${renderVarPicker('cfg-pd-phone')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Address Field (optional)</label>
+            <div class="flex gap-2">
+                <input id="cfg-pd-address" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.address_field || '{{localita}}'}" placeholder="{{localita}}">
+                ${renderVarPicker('cfg-pd-address')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Notes Field (optional)</label>
+            <div class="flex gap-2">
+                <input id="cfg-pd-notes" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.notes_field || ''}" placeholder="{{richiesta}}">
+                ${renderVarPicker('cfg-pd-notes')}
+            </div>
+        </div>
+    `;
+    }
+
+    // Attach sheet link updater for GOOGLE_SHEET nodes
+    const sheetIdInput = document.getElementById('cfg-sheet-id');
+    if (sheetIdInput) sheetIdInput.addEventListener('input', updateSheetLink);
 
     panel.classList.remove('hidden');
     panel.classList.add('flex');
 }
+
+// Helper: keep sheet link button in sync with ID field
+function updateSheetLink() {
+    const id = document.getElementById('cfg-sheet-id')?.value?.trim();
+    const link = document.getElementById('cfg-sheet-link');
+    if (link) {
+        link.href = 'https://docs.google.com/spreadsheets/d/' + (id || '');
+        link.classList.toggle('opacity-40', !id);
+        link.classList.toggle('pointer-events-none', !id);
+    }
+}
+
+// Helper for confirmation
+let confirmResolve = null;
+
+window.showConfirm = async (text, title = 'Confirm', icon = '⚠️') => {
+    const modal = document.getElementById('node-delete-modal');
+    if (!modal) return window.confirm(text); // Fallback
+
+    // Update modal content
+    const iconEl = document.getElementById('confirm-modal-icon');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const textEl = document.getElementById('confirm-modal-text');
+    if (iconEl) iconEl.textContent = icon;
+    if (titleEl) titleEl.textContent = title;
+    if (textEl) textEl.textContent = text;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    return new Promise((resolve) => {
+        confirmResolve = resolve;
+    });
+};
+
+window.confirmNodeDelete = () => {
+    const modal = document.getElementById('node-delete-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    if (confirmResolve) confirmResolve(true);
+    confirmResolve = null;
+};
+
+window.cancelNodeDelete = () => {
+    const modal = document.getElementById('node-delete-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    if (confirmResolve) confirmResolve(false);
+    confirmResolve = null;
+};
 
 function saveNodeConfig() {
     if (!currentNodeId) return;
     const node = editor.getNodeFromId(currentNodeId);
     const type = node.name;
     const data = node.data.config || {};
+
+    // Save custom node name (common for all node types)
+    const nodeNameInput = document.getElementById('cfg-node-name');
+    if (nodeNameInput) {
+        data.node_name = nodeNameInput.value.trim();
+    }
 
     // Extract values based on type
     if (type === 'TRIGGER') {
@@ -1436,14 +2535,51 @@ function saveNodeConfig() {
         data.to_field = document.getElementById('cfg-to').value;
         data.subject = document.getElementById('cfg-subj').value;
         data.body_var = document.getElementById('cfg-body').value;
+        data.header_logo = document.getElementById('cfg-email-logo')?.value || '';
+        data.header_text = document.getElementById('cfg-email-header')?.value || '';
+        data.footer_html = document.getElementById('cfg-email-footer')?.value || '';
     }
     else if (type === 'SEND_WHATSAPP') {
         data.phone_field = document.getElementById('cfg-phone').value;
         data.message_var = document.getElementById('cfg-msg').value;
     }
+    else if (type === 'HTML_PREVIEW') {
+        data.source_var = document.getElementById('cfg-preview-src')?.value || 'html_content';
+    }
+    else if (type === 'KNOWLEDGE') {
+        data.knowledge_text = document.getElementById('cfg-knowledge-text')?.value || '';
+        data.output_var = document.getElementById('cfg-knowledge-out')?.value || 'knowledge_text';
+    }
+    else if (type === 'GOOGLE_SHEET') {
+        data.sheet_id = document.getElementById('cfg-sheet-id').value;
+        data.sheet_name = document.getElementById('cfg-sheet-name')?.value || '';
+        data.sheet_range = document.getElementById('cfg-sheet-range').value;
+        data.filter_column = document.getElementById('cfg-filter-col').value;
+        data.filter_value = document.getElementById('cfg-filter-val').value;
+        data.output_var = document.getElementById('cfg-out').value;
+        data.update_column = document.getElementById('cfg-update-col')?.value || '';
+        data.update_value = document.getElementById('cfg-update-val')?.value || '';
+        data.counter_column = document.getElementById('cfg-counter-col')?.value || '';
+    }
+    else if (type === 'PIPEDRIVE') {
+        data.email_field = document.getElementById('cfg-pd-email')?.value || '{{email}}';
+        data.name_field = document.getElementById('cfg-pd-name')?.value || '{{nome}}';
+        data.phone_field = document.getElementById('cfg-pd-phone')?.value || '{{telefono}}';
+        data.address_field = document.getElementById('cfg-pd-address')?.value || '';
+        data.notes_field = document.getElementById('cfg-pd-notes')?.value || '';
+    }
 
     // Update Drawflow Data
     editor.updateNodeDataFromId(currentNodeId, { config: data });
+
+    // Update title-box on canvas to reflect custom name
+    if (data.node_name) {
+        const nodeEl = document.querySelector(`#node-${currentNodeId} .title-box`);
+        if (nodeEl) {
+            const emoji = nodeEl.textContent.match(/^[\p{Emoji}\s]+/u)?.[0]?.trim() || '';
+            nodeEl.textContent = (emoji ? emoji + ' ' : '') + data.node_name;
+        }
+    }
 
     // Visual Feedback
     const btn = document.querySelector('#node-config-panel button');
@@ -1461,31 +2597,759 @@ function zoomEditor(delta) {
     editor.zoom_refresh();
 }
 
+// --- LASSO RECTANGLE SELECT + GROUP MOVE + SPACE PAN ---
+function initLassoSelect() {
+    const container = document.getElementById('drawflow');
+    if (!container) return;
+
+    let isSelecting = false;
+    let startX = 0, startY = 0;
+    let selectedNodeIds = [];
+    let isGroupDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let nodeStartPositions = {};
+    let isSpacePanning = false;
+    let panStartX = 0, panStartY = 0;
+    let canvasStartX = 0, canvasStartY = 0;
+
+    // Create selection rectangle element  
+    const rect = document.createElement('div');
+    rect.id = 'lasso-rect';
+    rect.style.cssText = 'position:absolute;border:2px dashed #60a5fa;background:rgba(96,165,250,0.08);pointer-events:none;z-index:9999;display:none;border-radius:4px;';
+    container.appendChild(rect);
+
+    // Create invisible overlay for space/right-click/middle-click panning
+    const panOverlay = document.createElement('div');
+    panOverlay.id = 'pan-overlay';
+    panOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:none;cursor:grab;';
+    document.body.appendChild(panOverlay);
+    let isPanDragging = false;
+    let isRightClickPanning = false;
+
+    // --- DISABLE Drawflow's built-in left-click canvas drag ---
+    // Override Drawflow's drag behavior after it processes mousedown
+    // Drawflow sets editor.drag = true when dragging empty canvas — we turn it off
+    container.addEventListener('mousedown', function (e) {
+        if (e.button === 0 && !e.target.closest('.drawflow-node') && !e.target.closest('.title-box')) {
+            // Let Drawflow process the event normally (for node deselect etc.)
+            // But after a microtask, disable its canvas drag
+            requestAnimationFrame(() => {
+                if (editor && editor.drag) {
+                    editor.drag = false;
+                }
+            });
+        }
+    });
+
+    // --- RIGHT-CLICK & MIDDLE-CLICK PAN ---
+    // Suppress context menu on EMPTY CANVAS only
+    container.addEventListener('contextmenu', function (e) {
+        if (e.target.closest('.drawflow-node') || e.target.closest('.title-box')) return;
+        if (!e.target.closest('input') && !e.target.closest('textarea')) {
+            e.preventDefault();
+        }
+    });
+
+    // Right-click or middle-click starts panning (only on empty canvas)
+    container.addEventListener('mousedown', function (e) {
+        if ((e.button === 2 || e.button === 1) && !e.target.closest('.drawflow-node') && !e.target.closest('.title-box')) {
+            e.preventDefault();
+            isRightClickPanning = true;
+            panOverlay.style.display = 'block';
+            panOverlay.style.cursor = 'grabbing';
+            isPanDragging = true;
+            panStartX = e.clientX;
+            panStartY = e.clientY;
+            const canvasEl = container.querySelector('.drawflow_content_node');
+            if (canvasEl) {
+                const transform = canvasEl.style.transform || '';
+                const match = transform.match(/translate\(([-.\d]+)px,\s*([-.\d]+)px\)/);
+                canvasStartX = match ? parseFloat(match[1]) : 0;
+                canvasStartY = match ? parseFloat(match[2]) : 0;
+            }
+        }
+    });
+
+    // --- SPACE BAR PAN ---
+    document.addEventListener('keydown', function (e) {
+        if (e.code === 'Space' && !e.target.closest('input, textarea, select') && !isSpacePanning) {
+            e.preventDefault();
+            isSpacePanning = true;
+            panOverlay.style.display = 'block';
+            container.classList.add('space-panning-active');
+            if (editor) editor.editor_mode = 'fixed';
+        }
+    });
+    document.addEventListener('keyup', function (e) {
+        if (e.code === 'Space' && isSpacePanning) {
+            isSpacePanning = false;
+            isPanDragging = false;
+            panOverlay.style.display = 'none';
+            panOverlay.style.cursor = 'grab';
+            container.classList.remove('space-panning-active');
+            if (editor) editor.editor_mode = 'edit';
+        }
+    });
+
+    // Pan mousedown — on OVERLAY (for spacebar panning)
+    panOverlay.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        isPanDragging = true;
+        panOverlay.style.cursor = 'grabbing';
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        const canvasEl = container.querySelector('.drawflow_content_node');
+        if (canvasEl) {
+            const transform = canvasEl.style.transform || '';
+            const match = transform.match(/translate\(([-.\d]+)px,\s*([-.\d]+)px\)/);
+            canvasStartX = match ? parseFloat(match[1]) : 0;
+            canvasStartY = match ? parseFloat(match[2]) : 0;
+        }
+    });
+
+    // Lasso + group drag mousedown
+    container.addEventListener('mousedown', function (e) {
+
+        // --- LASSO SELECT ---
+        // Only start lasso if clicking on empty canvas (not on a node)
+        if (e.target.closest('.drawflow-node') || e.target.closest('.title-box') || e.target.closest('input') || e.target.closest('textarea')) {
+            // Check if clicking a selected node to start group drag
+            const clickedNode = e.target.closest('.drawflow-node');
+            if (clickedNode && clickedNode.classList.contains('lasso-selected') && selectedNodeIds.length > 1) {
+                e.stopPropagation();
+                isGroupDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                // Store start positions of all selected nodes
+                nodeStartPositions = {};
+                selectedNodeIds.forEach(id => {
+                    const el = document.getElementById('node-' + id);
+                    if (el) {
+                        nodeStartPositions[id] = {
+                            x: parseFloat(el.style.left) || 0,
+                            y: parseFloat(el.style.top) || 0
+                        };
+                    }
+                });
+            }
+            return;
+        }
+        if (e.button !== 0) return;
+
+        // Clear previous selection
+        clearLassoSelection();
+
+        isSelecting = true;
+        const containerRect = container.getBoundingClientRect();
+        startX = e.clientX - containerRect.left;
+        startY = e.clientY - containerRect.top;
+        rect.style.left = startX + 'px';
+        rect.style.top = startY + 'px';
+        rect.style.width = '0px';
+        rect.style.height = '0px';
+        rect.style.display = 'block';
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        // Space / right-click panning
+        if (isPanDragging && (e.buttons === 1 || e.buttons === 2 || e.buttons === 4)) {
+            const dx = e.clientX - panStartX;
+            const dy = e.clientY - panStartY;
+            if (editor) {
+                editor.canvas_x = canvasStartX + dx;
+                editor.canvas_y = canvasStartY + dy;
+                const canvasEl = container.querySelector('.drawflow_content_node');
+                if (canvasEl) {
+                    canvasEl.style.transform = `translate(${editor.canvas_x}px, ${editor.canvas_y}px) scale(${editor.zoom})`;
+                }
+            }
+            return;
+        }
+
+        // Group dragging
+        if (isGroupDragging) {
+            const zoom = editor ? editor.zoom : 1;
+            const dx = (e.clientX - dragStartX) / zoom;
+            const dy = (e.clientY - dragStartY) / zoom;
+            selectedNodeIds.forEach(id => {
+                const el = document.getElementById('node-' + id);
+                const startPos = nodeStartPositions[id];
+                if (el && startPos) {
+                    el.style.left = (startPos.x + dx) + 'px';
+                    el.style.top = (startPos.y + dy) + 'px';
+                }
+            });
+            // Update connections in real-time
+            if (editor) {
+                selectedNodeIds.forEach(id => {
+                    try { editor.updateConnectionNodes('node-' + id); } catch (err) { }
+                });
+            }
+            return;
+        }
+
+        // Lasso selecting
+        if (!isSelecting) return;
+        const containerRect = container.getBoundingClientRect();
+        const currentX = e.clientX - containerRect.left;
+        const currentY = e.clientY - containerRect.top;
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const w = Math.abs(currentX - startX);
+        const h = Math.abs(currentY - startY);
+        rect.style.left = x + 'px';
+        rect.style.top = y + 'px';
+        rect.style.width = w + 'px';
+        rect.style.height = h + 'px';
+    });
+
+    document.addEventListener('mouseup', function (e) {
+        // Space/right-click pan end
+        if (isPanDragging) {
+            isPanDragging = false;
+            if (isRightClickPanning) {
+                isRightClickPanning = false;
+                panOverlay.style.display = 'none';
+            }
+            panOverlay.style.cursor = 'grab';
+            return;
+        }
+
+        // Group drag end - save positions to Drawflow
+        if (isGroupDragging) {
+            isGroupDragging = false;
+            const zoom = editor ? editor.zoom : 1;
+            const dx = (e.clientX - dragStartX) / zoom;
+            const dy = (e.clientY - dragStartY) / zoom;
+            selectedNodeIds.forEach(id => {
+                const startPos = nodeStartPositions[id];
+                if (startPos && editor) {
+                    try {
+                        const node = editor.getNodeFromId(id);
+                        if (node) {
+                            node.pos_x = startPos.x + dx;
+                            node.pos_y = startPos.y + dy;
+                        }
+                    } catch (err) { }
+                }
+            });
+            return;
+        }
+
+        // Lasso select end
+        if (!isSelecting) return;
+        isSelecting = false;
+
+        const rectBounds = rect.getBoundingClientRect();
+        rect.style.display = 'none';
+
+        if (rectBounds.width < 10 || rectBounds.height < 10) return;
+
+        const nodes = container.querySelectorAll('.drawflow-node');
+        nodes.forEach(node => {
+            const nodeBounds = node.getBoundingClientRect();
+            if (nodeBounds.left < rectBounds.right && nodeBounds.right > rectBounds.left &&
+                nodeBounds.top < rectBounds.bottom && nodeBounds.bottom > rectBounds.top) {
+                node.classList.add('lasso-selected');
+                node.style.outline = '2px solid #60a5fa';
+                node.style.outlineOffset = '2px';
+                const nodeId = node.id.replace('node-', '');
+                selectedNodeIds.push(nodeId);
+            }
+        });
+
+        if (selectedNodeIds.length > 0) {
+            console.log(`Lasso selected ${selectedNodeIds.length} nodes:`, selectedNodeIds);
+            showSelectionToolbar(selectedNodeIds.length);
+        }
+    });
+
+    // Clear selection on click on empty canvas
+    container.addEventListener('click', function (e) {
+        if (e.target.closest('.lasso-selected')) return;
+        if (!e.target.closest('.drawflow-node')) {
+            clearLassoSelection();
+        }
+    });
+
+    function clearLassoSelection() {
+        container.querySelectorAll('.lasso-selected').forEach(n => {
+            n.classList.remove('lasso-selected');
+            n.style.outline = '';
+            n.style.outlineOffset = '';
+        });
+        selectedNodeIds = [];
+        hideSelectionToolbar();
+    }
+
+    // Selection toolbar (floating)
+    function showSelectionToolbar(count) {
+        let toolbar = document.getElementById('lasso-toolbar');
+        if (!toolbar) {
+            toolbar = document.createElement('div');
+            toolbar.id = 'lasso-toolbar';
+            toolbar.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(30,41,59,0.95);border:1px solid #3b82f6;border-radius:12px;padding:8px 16px;display:flex;gap:12px;align-items:center;z-index:10000;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+            document.body.appendChild(toolbar);
+        }
+        toolbar.innerHTML = `
+            <span style="color:#93c5fd;font-size:12px;font-weight:600;">${count} selected</span>
+            <button onclick="bulkDeleteSelected()" style="background:#dc2626;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Delete selected (Del)">
+                🗑️ Delete
+            </button>
+            <button onclick="bulkDuplicateSelected()" style="background:#2563eb;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Duplicate selected (Ctrl+D)">
+                📋 Duplicate
+            </button>
+            <button onclick="copySelectedNodes()" style="background:#7c3aed;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Copy selected (Ctrl+C)">
+                📎 Copy
+            </button>
+            <span style="color:#6b7280;font-size:10px;">Drag to move • Ctrl+V to paste</span>
+        `;
+        toolbar.style.display = 'flex';
+    }
+
+    function hideSelectionToolbar() {
+        const toolbar = document.getElementById('lasso-toolbar');
+        if (toolbar) toolbar.style.display = 'none';
+    }
+
+    // Bulk delete
+    window.bulkDeleteSelected = function () {
+        if (selectedNodeIds.length === 0) return;
+        selectedNodeIds.forEach(id => {
+            try { editor.removeNodeId('node-' + id); } catch (err) { }
+        });
+        clearLassoSelection();
+    };
+
+    // Bulk duplicate
+    window.bulkDuplicateSelected = function () {
+        if (selectedNodeIds.length === 0 || !editor) return;
+        const offset = 50;
+        selectedNodeIds.forEach(id => {
+            try {
+                const node = editor.getNodeFromId(id);
+                if (!node) return;
+                const newId = editor.addNode(
+                    node.name,
+                    Object.keys(node.inputs).length,
+                    Object.keys(node.outputs).length,
+                    node.pos_x + offset,
+                    node.pos_y + offset,
+                    node.class,
+                    JSON.parse(JSON.stringify(node.data)),
+                    node.html
+                );
+                console.log(`Duplicated node ${id} → ${newId}`);
+            } catch (err) { console.warn('Duplicate failed for node', id, err); }
+        });
+        clearLassoSelection();
+    };
+
+    // Copy selected nodes to clipboard
+    window.copySelectedNodes = function () {
+        if (selectedNodeIds.length === 0 || !editor) return;
+        const nodesCopy = [];
+        selectedNodeIds.forEach(id => {
+            try {
+                const node = editor.getNodeFromId(id);
+                if (!node) return;
+                nodesCopy.push({
+                    name: node.name,
+                    class: node.class,
+                    html: node.html,
+                    pos_x: node.pos_x,
+                    pos_y: node.pos_y,
+                    inputs: Object.keys(node.inputs).length,
+                    outputs: Object.keys(node.outputs).length,
+                    data: JSON.parse(JSON.stringify(node.data))
+                });
+            } catch (err) { console.warn('Copy failed for node', id, err); }
+        });
+
+        if (nodesCopy.length > 0) {
+            const clipboardData = JSON.stringify({ _floormad_nodes: nodesCopy });
+            navigator.clipboard.writeText(clipboardData).then(() => {
+                showStatus('success', 'Copied', `${nodesCopy.length} node(s) copied to clipboard. Use Ctrl+V to paste.`);
+            }).catch(() => {
+                // Fallback: store in memory
+                window._floormadClipboard = nodesCopy;
+                showStatus('success', 'Copied', `${nodesCopy.length} node(s) copied (memory). Use Ctrl+V to paste.`);
+            });
+        }
+    };
+
+    // Paste nodes from clipboard
+    window.pasteNodes = async function () {
+        if (!editor) return;
+        let nodesCopy = null;
+
+        // Try system clipboard first
+        try {
+            const text = await navigator.clipboard.readText();
+            const parsed = JSON.parse(text);
+            if (parsed._floormad_nodes) {
+                nodesCopy = parsed._floormad_nodes;
+            }
+        } catch (e) {
+            // Fallback: memory clipboard
+            if (window._floormadClipboard) {
+                nodesCopy = window._floormadClipboard;
+            }
+        }
+
+        if (!nodesCopy || nodesCopy.length === 0) {
+            showStatus('info', 'Nothing to Paste', 'No copied nodes found in clipboard.');
+            return;
+        }
+
+        const offset = 100;
+        let count = 0;
+        nodesCopy.forEach(n => {
+            try {
+                editor.addNode(
+                    n.name,
+                    n.inputs,
+                    n.outputs,
+                    n.pos_x + offset,
+                    n.pos_y + offset,
+                    n.class,
+                    JSON.parse(JSON.stringify(n.data)),
+                    n.html
+                );
+                count++;
+            } catch (err) { console.warn('Paste failed for node', n.name, err); }
+        });
+
+        if (count > 0) {
+            showStatus('success', 'Pasted', `${count} node(s) pasted. Connect them as needed.`);
+        }
+    };
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function (e) {
+        if (e.target.closest('input, textarea, select')) return;
+
+        // Ctrl+C = copy selected nodes
+        if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedNodeIds.length > 0) {
+            e.preventDefault();
+            window.copySelectedNodes();
+            return;
+        }
+
+        // Ctrl+V = paste nodes
+        if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+            e.preventDefault();
+            window.pasteNodes();
+            return;
+        }
+
+        if (selectedNodeIds.length === 0) return;
+
+        // Delete/Backspace = bulk delete
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            window.bulkDeleteSelected();
+        }
+        // Ctrl+D = bulk duplicate
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            window.bulkDuplicateSelected();
+        }
+    });
+}
+
+// --- INLINE RENAME ---
+function initInlineRename() {
+    const container = document.getElementById('drawflow');
+    if (!container) return;
+
+    container.addEventListener('dblclick', function (e) {
+        const titleBox = e.target.closest('.title-box');
+        if (!titleBox) return;
+        if (titleBox.querySelector('input')) return; // Already editing
+
+        // Set flag to prevent sidebar from opening
+        window._isInlineRenaming = true;
+
+        // Close the config sidebar if it opened from the first click
+        const panel = document.getElementById('node-config-panel');
+        if (panel) {
+            panel.classList.add('hidden');
+            panel.classList.remove('flex');
+        }
+
+        // Find node id
+        const nodeEl = titleBox.closest('.drawflow-node');
+        if (!nodeEl) return;
+        const nodeId = nodeEl.id.replace('node-', '');
+
+        // Get current text
+        const currentText = titleBox.textContent.trim();
+        // Extract emoji prefix
+        const emojiMatch = currentText.match(/^([\p{Emoji}\uFE0F\s]+)/u);
+        const emoji = emojiMatch ? emojiMatch[1].trim() : '';
+        const nameOnly = emoji ? currentText.replace(emojiMatch[0], '').trim() : currentText;
+
+        // Replace with input
+        const origHtml = titleBox.innerHTML;
+        titleBox.innerHTML = `<input type="text" value="${nameOnly}" 
+            style="background:transparent; border:1px solid #60a5fa; color:white; font-size:inherit; font-weight:inherit; padding:1px 4px; border-radius:4px; width:100%; outline:none;"
+            onclick="event.stopPropagation()" 
+            onmousedown="event.stopPropagation()">`;
+
+        const input = titleBox.querySelector('input');
+        input.focus();
+        input.select();
+
+        // Prevent Drawflow from dragging while editing
+        input.addEventListener('mousedown', e => e.stopPropagation());
+        input.addEventListener('mouseup', e => e.stopPropagation());
+
+        const finishEdit = () => {
+            window._isInlineRenaming = false;
+            const newName = input.value.trim() || nameOnly;
+            titleBox.textContent = (emoji ? emoji + ' ' : '') + newName;
+
+            // Save to Drawflow node data
+            try {
+                const node = editor.getNodeFromId(nodeId);
+                if (node) {
+                    if (!node.data.config) node.data.config = {};
+                    node.data.config.node_name = newName;
+                    editor.updateNodeDataFromId(nodeId, node.data);
+                }
+            } catch (e) { console.warn('Failed to save inline rename', e); }
+        };
+
+        input.addEventListener('blur', finishEdit, { once: true });
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { input.blur(); }
+            if (e.key === 'Escape') {
+                window._isInlineRenaming = false;
+                titleBox.innerHTML = origHtml;
+            }
+        });
+    });
+}
+
+// --- HTML PREVIEW ---
+function previewHtmlOutput() {
+    if (!currentProjectId) { showStatus('error', 'Error', 'No project selected'); return; }
+
+    const srcInput = document.getElementById('cfg-preview-src');
+    const varName = srcInput ? srcInput.value : 'html_content';
+
+    // Priority 1: Use local result from recent "Run Workflow"
+    console.log("previewHtmlOutput: checking lastExecutionResult", lastExecutionResult);
+    if (lastExecutionResult && lastExecutionResult.final_context) {
+        let htmlContent = '';
+        const output = lastExecutionResult.final_context;
+        console.log("previewHtmlOutput: final_context", output);
+        console.log("previewHtmlOutput: Looking for varName:", varName);
+
+        // Search for variable
+        if (output[varName]) {
+            htmlContent = output[varName];
+            console.log("Found direct match for", varName);
+        } else {
+            // Deep search
+            for (const key of Object.keys(output)) {
+                if (typeof output[key] === 'object' && output[key] && output[key][varName]) {
+                    htmlContent = output[key][varName];
+                    console.log("Found nested match for", varName, "in", key);
+                    break;
+                }
+            }
+        }
+
+        if (htmlContent) {
+            const win = window.open('', '_blank', 'width=800,height=600');
+            win.document.write(htmlContent);
+            win.document.close();
+            return;
+        }
+    }
+
+    // Priority 2: Fetch processing runs from DB
+    fetch(`/api/projects/${currentProjectId}/runs`)
+        .then(r => r.json())
+        .then(data => {
+            const runs = data.runs || [];
+            if (runs.length === 0) {
+                showStatus('error', 'No Runs', 'Run the workflow first to generate output.');
+                return;
+            }
+            // Get latest run output
+            const lastRun = runs[0];
+            return fetch(`/api/runs/${lastRun.id}`)
+                .then(r => r.json());
+        })
+        .then(run => {
+            if (!run) return;
+            let htmlContent = '';
+
+            // Try to find the variable in the run output
+            if (run.output_json) {
+                try {
+                    const output = typeof run.output_json === 'string' ? JSON.parse(run.output_json) : run.output_json;
+                    // Search through all node outputs for the variable
+                    if (output[varName]) {
+                        htmlContent = output[varName];
+                    } else {
+                        // Deep search
+                        for (const key of Object.keys(output)) {
+                            if (typeof output[key] === 'object' && output[key][varName]) {
+                                htmlContent = output[key][varName];
+                                break;
+                            }
+                        }
+                    }
+                } catch (e) { console.warn('Parse error', e); }
+            }
+
+            if (!htmlContent) {
+                htmlContent = '<div style="padding:40px;text-align:center;color:#999;font-family:sans-serif;"><h2>No HTML output found</h2><p>Run the workflow first, or check that the variable name matches.</p></div>';
+            }
+
+            // Open preview window
+            const win = window.open('', '_blank', 'width=800,height=600');
+            win.document.write(htmlContent);
+            win.document.close();
+        })
+        .catch(e => {
+            showStatus('error', 'Preview Failed', e.message);
+        });
+}
+
+// --- KNOWLEDGE FILE UPLOAD ---
+async function uploadKnowledgeFile(input, nodeId) {
+    const file = input.files[0];
+    if (!file) return;
+
+    showStatus('info', 'Processing...', `Reading ${file.name}...`);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('node_id', nodeId);
+    formData.append('project_id', currentProjectId);
+
+    try {
+        const res = await fetch('/api/knowledge/parse', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            // Set the text into the textarea
+            const textarea = document.getElementById('cfg-knowledge-text');
+            if (textarea) textarea.value = data.text;
+
+            // Show preview
+            const preview = document.getElementById(`knowledge-preview-${nodeId}`);
+            if (preview) {
+                preview.classList.remove('hidden');
+                preview.querySelector('div').textContent = data.text.substring(0, 500) + (data.text.length > 500 ? '...' : '');
+                preview.querySelector('label').textContent = `📋 Current Knowledge (${data.text.length} chars)`;
+            }
+
+            showStatus('success', 'File Parsed!', `${file.name} → ${data.text.length} characters extracted`);
+        } else {
+            showStatus('error', 'Parse Failed', data.error || 'Unknown error');
+        }
+    } catch (e) {
+        showStatus('error', 'Upload Failed', e.message);
+    }
+}
+
 // --- LOAD/SAVE WORKFLOW ---
 // (Replaces renderWorkflow which was for list view)
-function renderWorkflow() {
+function normalizeWorkflowForImport(wf) {
+    if (!wf || Object.keys(wf).length === 0) return null;
 
-    // This function is now just "Load Drawflow Data"
+    let data = wf;
+
+    // Unwrap extra 'drawflow' layers (e.g. {drawflow: {drawflow: {Home: ...}}})
+    let safety = 0;
+    while (data && data.drawflow && !data.Home && safety < 5) {
+        data = data.drawflow;
+        safety++;
+    }
+
+    // Wrap if needed: Drawflow expects {drawflow: {Home: {data: {...}}}}
+    if (data && data.Home && !data.drawflow) {
+        data = { drawflow: data };
+    }
+
+    return data;
+}
+
+// Force all connection paths to recalculate their SVG coordinates
+// This is needed because Drawflow's updateConnectionNodes uses getBoundingClientRect()
+// which returns 0,0 if nodes aren't rendered yet (tab not visible, etc.)
+function forceRedrawConnections() {
+    if (!editor) return;
+
+    const redraw = () => {
+        try {
+            // Get all node IDs from the Drawflow data
+            const data = editor.drawflow.drawflow[editor.module]?.data || {};
+            const nodeIds = Object.keys(data);
+
+            // Recalculate connections for each node
+            nodeIds.forEach(id => {
+                editor.updateConnectionNodes('node-' + id);
+            });
+
+            editor.zoom_refresh();
+            console.log(`Forced redraw of connections for ${nodeIds.length} nodes`);
+        } catch (e) {
+            console.error('forceRedrawConnections error:', e);
+        }
+    };
+
+    // Multiple passes to ensure rendering at different stages
+    requestAnimationFrame(() => {
+        redraw();
+        setTimeout(redraw, 100);
+        setTimeout(redraw, 300);
+        setTimeout(redraw, 600);
+    });
+}
+
+function renderWorkflow() {
     if (editor) {
-        editor.clear(); // Clear canvas
+        editor.clear();
 
         if (currentWorkflow && Object.keys(currentWorkflow).length > 0) {
-            // REPAIR: Fix Unknown nodes before import
             try { repairWorkflow(currentWorkflow); } catch (e) { console.error("Repair failed", e); }
 
-            // Check if it's the new JSON spec or old Drawflow export
-            if (currentWorkflow.drawflow) {
-                try { editor.import(currentWorkflow); } catch (e) { console.error("Import failed", e); }
-            } else {
-                try { editor.import(currentWorkflow); } catch (e) { }
+            const importData = normalizeWorkflowForImport(currentWorkflow);
+            if (importData) {
+                try {
+                    editor.import(importData);
+                    console.log("Workflow imported successfully");
+                    // Force connection lines to render by recalculating all node connections
+                    forceRedrawConnections();
+                } catch (e) {
+                    console.error("Import failed", e);
+                }
             }
         }
     } else {
-        // Init if not already
         initDrawflow();
         if (editor && currentWorkflow) {
             try { repairWorkflow(currentWorkflow); } catch (e) { }
-            try { editor.import(currentWorkflow); } catch (e) { }
+            const importData = normalizeWorkflowForImport(currentWorkflow);
+            if (importData) {
+                try {
+                    editor.import(importData);
+                    // Force connection lines to render by recalculating all node connections
+                    forceRedrawConnections();
+                } catch (e) { console.error("Import failed (init)", e); }
+            }
         }
     }
 }
@@ -1494,33 +3358,66 @@ function repairWorkflow(json) {
     if (!json || !json.drawflow || !json.drawflow.Home || !json.drawflow.Home.data) return;
 
     const nodes = json.drawflow.Home.data;
+
+    // Expected inputs/outputs for each node type
+    const nodeIOMap = {
+        'TRIGGER': { inputs: 0, outputs: 1 },
+        'AI_COMPLETION': { inputs: 1, outputs: 1 },
+        'HTML_TEMPLATE': { inputs: 1, outputs: 1 },
+        'SEND_EMAIL': { inputs: 1, outputs: 1 },
+        'SEND_WHATSAPP': { inputs: 1, outputs: 1 },
+        'HTML_PREVIEW': { inputs: 1, outputs: 1 },
+        'KNOWLEDGE': { inputs: 1, outputs: 1 },
+        'GOOGLE_SHEET': { inputs: 1, outputs: 1 },
+        'PIPEDRIVE': { inputs: 1, outputs: 1 },
+    };
+
+    const htmlTemplates = {
+        'TRIGGER': `<div class="node-content trigger-node"><div class="title-box">⚡ Trigger</div><div class="box"><p>Cron / Webhook</p></div></div>`,
+        'AI_COMPLETION': `<div class="node-content ai-node"><div class="title-box">✨ AI Completion</div><div class="box"><p>Gen Text/JSON</p></div></div>`,
+        'HTML_TEMPLATE': `<div class="node-content html-node"><div class="title-box">📄 HTML Template</div><div class="box"><p>Build HTML</p></div></div>`,
+        'SEND_EMAIL': `<div class="node-content email-node"><div class="title-box">📧 Send Email</div><div class="box"><p>SMTP/Gmail</p></div></div>`,
+        'SEND_WHATSAPP': `<div class="node-content wa-node"><div class="title-box">💬 WhatsApp</div><div class="box"><p>WeSender</p></div></div>`,
+        'HTML_PREVIEW': `<div class="node-content preview-node" style="border-color:#10b981;"><div class="title-box" style="background:linear-gradient(135deg,#065f46,#047857);">👁️ HTML Preview</div><div class="box"><p>Live Preview</p></div></div>`,
+        'KNOWLEDGE': `<div class="node-content knowledge-node" style="border-color:#14b8a6;"><div class="title-box" style="background:linear-gradient(135deg,#134e4a,#0f766e);">📚 Knowledge</div><div class="box"><p>Data Source</p></div></div>`,
+        'GOOGLE_SHEET': `<div class="node-content sheet-node" style="border-color:#34a853;"><div class="title-box" style="background:linear-gradient(135deg,#188038,#137333);">📊 Google Sheet</div><div class="box"><p>Read/Filter Rows</p></div></div>`,
+        'PIPEDRIVE': `<div class="node-content pipedrive-node" style="border-color:#7c3aed;"><div class="title-box" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);">🔗 Pipedrive</div><div class="box"><p>CRM Sync</p></div></div>`,
+    };
+
     Object.values(nodes).forEach(node => {
-        // If HTML is missing or Unknown, regenerate it
-        if (!node.html || node.html.includes('Unknown') || node.html.includes('UNKNOWN')) {
-            console.log(`Reparing node ${node.id} (${node.name})`);
+        const type = (node.name || '').toUpperCase();
 
-            // Re-use templates (should ideally be shared const, but duplicating for safety here)
-            let html = `<div>Unknown</div>`;
-            const type = node.name.toUpperCase();
+        // Fix HTML if missing
+        if ((!node.html || node.html.includes('Unknown') || node.html.includes('UNKNOWN')) && htmlTemplates[type]) {
+            console.log(`Repairing HTML for node ${node.id} (${node.name})`);
+            node.html = htmlTemplates[type];
+        }
 
-            if (type === 'TRIGGER') {
-                html = `<div class="node-content trigger-node"><div class="title-box">⚡ Trigger</div><div class="box"><p>Cron / Webhook</p></div></div>`;
-            } else if (type === 'AI_COMPLETION') {
-                html = `<div class="node-content ai-node"><div class="title-box">✨ AI Completion</div><div class="box"><p>Gen Text/JSON</p></div></div>`;
-            } else if (type === 'HTML_TEMPLATE') {
-                html = `<div class="node-content html-node"><div class="title-box">📄 HTML Template</div><div class="box"><p>Build HTML</p></div></div>`;
-            } else if (type === 'SEND_EMAIL') {
-                html = `<div class="node-content email-node"><div class="title-box">📧 Send Email</div><div class="box"><p>SMTP/Gmail</p></div></div>`;
-            } else if (type === 'SEND_WHATSAPP') {
-                html = `<div class="node-content wa-node"><div class="title-box">💬 WhatsApp</div><div class="box"><p>WeSender</p></div></div>`;
+        // Fix inputs/outputs port count
+        const expected = nodeIOMap[type];
+        if (expected) {
+            const currentInputs = Object.keys(node.inputs || {}).length;
+            const currentOutputs = Object.keys(node.outputs || {}).length;
+
+            // Add missing input ports (preserve existing connections)
+            if (currentInputs < expected.inputs) {
+                for (let i = currentInputs + 1; i <= expected.inputs; i++) {
+                    node.inputs['input_' + i] = { connections: [] };
+                }
+                console.log(`Added input port(s) to node ${node.id} (${type})`);
             }
 
-            if (html !== `<div>Unknown</div>`) {
-                node.html = html;
+            // Add missing output ports (preserve existing connections)
+            if (currentOutputs < expected.outputs) {
+                for (let i = currentOutputs + 1; i <= expected.outputs; i++) {
+                    node.outputs['output_' + i] = { connections: [] };
+                }
+                console.log(`Added output port(s) to node ${node.id} (${type})`);
             }
         }
     });
 }
+
 
 // Update saveConfig to export Drawflow data
 // Found in saveConfig(): workflow_json: currentWorkflow
@@ -1650,6 +3547,50 @@ async function fetchSystemInfo() {
     }
 }
 
+async function openSettings() {
+    const modal = document.getElementById('settings-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    // Load Settings
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+
+        document.getElementById('gs-client-id').value = settings.google_client_id || '';
+        document.getElementById('gs-client-secret').value = settings.google_client_secret || '';
+    } catch (e) {
+        console.error("Failed to load settings", e);
+        showStatus('error', 'Error', 'Failed to load global settings');
+    }
+}
+
+async function saveGlobalSettings() {
+    const clientId = document.getElementById('gs-client-id').value;
+    const clientSecret = document.getElementById('gs-client-secret').value;
+
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                google_client_id: clientId,
+                google_client_secret: clientSecret
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Saved', 'Global settings updated');
+            document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('settings-modal').classList.remove('flex');
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (e) {
+        showStatus('error', 'Save Failed', e.message);
+    }
+}
+
 function openChangelog() {
     document.getElementById('changelog-modal').classList.remove('hidden');
     document.getElementById('changelog-modal').classList.add('flex');
@@ -1663,6 +3604,7 @@ async function testEmail() {
     const user = document.getElementById('int-smtp-user').value;
     const pass = document.getElementById('int-smtp-pass').value;
     const from = document.getElementById('int-smtp-from').value;
+    const to = document.getElementById('int-smtp-to').value; // Get Test Recipient
 
     if (!host || !user || !pass) {
         showStatus('error', 'Missing Fields', 'Please fill Host, User and Password.');
@@ -1675,21 +3617,38 @@ async function testEmail() {
         const res = await fetch('/api/test/email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ host, port, user, pass, from_name: from })
+            body: JSON.stringify({ host, port, user, password: pass, from_name: from || "Floormad Admin", to_email: to }) // Changed from 'pass' to 'password'
         });
         const data = await res.json();
+
+        if (!res.ok) {
+            // Handle FastAPI errors (422, etc)
+            let msg = data.message || "Unknown error";
+            if (data.detail) {
+                if (Array.isArray(data.detail)) {
+                    msg = data.detail.map(d => `${d.loc.join('.')} : ${d.msg}`).join('\n');
+                } else {
+                    msg = data.detail;
+                }
+            }
+            throw new Error(msg);
+        }
+
         if (data.success) {
             showStatus('success', 'Email Sent', 'Check your inbox for the test email.');
         } else {
-            throw new Error(data.message);
+            throw new Error(data.message || "Operation failed without message");
         }
     } catch (e) {
+        console.error("SMTP Test Error", e);
         showStatus('error', 'Test Failed', e.message);
+        addSystemLog('error', 'SMTP Test Failed: ' + e.message);
     }
 }
 
 async function testWhatsApp() {
     const apiKey = document.getElementById('int-wesender-key').value;
+    const apiUrl = document.getElementById('int-wesender-url').value;
     if (!apiKey) {
         showStatus('error', 'Missing Key', 'Please enter WeSender API Key.');
         return;
@@ -1704,7 +3663,7 @@ async function testWhatsApp() {
         const res = await fetch('/api/test/whatsapp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: apiKey, phone: phone })
+            body: JSON.stringify({ api_key: apiKey, api_url: apiUrl, phone: phone })
         });
         const data = await res.json();
         if (data.success) {
@@ -1717,16 +3676,102 @@ async function testWhatsApp() {
     }
 }
 
+async function testPipedrive() {
+    const apiToken = document.getElementById('int-pipedrive-token').value;
+    if (!apiToken) {
+        showStatus('error', 'Missing Token', 'Please enter Pipedrive API Token.');
+        return;
+    }
+
+    showStatus('loading', 'Testing Pipedrive...', 'Connecting to Pipedrive API...');
+
+    try {
+        const res = await fetch('/api/test/pipedrive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_token: apiToken })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Pipedrive Connected', data.message);
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (e) {
+        showStatus('error', 'Test Failed', e.message);
+    }
+}
+
+// WebSocket Logic
+let ws = null;
+
+function connectWebSocket() {
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws/workflow-status`);
+
+    ws.onopen = () => {
+        console.log("WebSocket Connected");
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'execution_update') {
+                updateNodeStatus(data.node_id, data.status, data.message);
+            }
+        } catch (e) {
+            console.error("WS Message Error:", e);
+        }
+    };
+
+    ws.onclose = () => {
+        console.log("WebSocket Disconnected. Reconnecting in 5s...");
+        setTimeout(connectWebSocket, 5000);
+    };
+}
+
+function updateNodeStatus(nodeId, status, message) {
+    if (!editor) return;
+
+    // Drawflow uses 'node-{id}' as ID for the element
+    const el = document.getElementById(`node-${nodeId}`);
+    if (!el) return;
+
+    // Reset classes
+    el.classList.remove('ring-4', 'ring-yellow-400', 'ring-green-500', 'ring-red-500', 'animate-pulse');
+
+    if (status === 'running') {
+        el.classList.add('ring-4', 'ring-yellow-400', 'animate-pulse');
+    } else if (status === 'completed' || status === 'success') {
+        el.classList.add('ring-4', 'ring-green-500');
+        // Remove pulse after 1s
+        setTimeout(() => el.classList.remove('animate-pulse'), 1000);
+    } else if (status === 'error' || status === 'failed') {
+        el.classList.add('ring-4', 'ring-red-500');
+    } else if (status === 'skipped') {
+        el.classList.add('opacity-50', 'grayscale');
+    }
+}
+
 function runWorkflow() {
     if (!currentProjectId) {
         showStatus('error', 'Error', 'No project selected.');
         return;
     }
 
-    // Find button elements
+    // Ensure WS is connected
+    connectWebSocket();
+
+    // Reset previous statuses visual
+    document.querySelectorAll('.drawflow-node').forEach(el => {
+        el.classList.remove('ring-4', 'ring-yellow-400', 'ring-green-500', 'ring-red-500', 'animate-pulse');
+    });
+
     const btn = document.querySelector('button[onclick="runWorkflow()"]');
     const spinner = document.getElementById('run-spinner');
-    const outputBtn = document.getElementById('btn-view-output'); // NEW: Get output button
+    const outputBtn = document.getElementById('btn-view-output');
 
     const setRunning = (isRunning) => {
         if (btn) {
@@ -1734,7 +3779,7 @@ function runWorkflow() {
             if (isRunning) {
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
                 if (spinner) spinner.classList.remove('hidden');
-                if (outputBtn) outputBtn.classList.add('hidden'); // Hide output while running
+                if (outputBtn) outputBtn.classList.add('hidden');
             } else {
                 btn.classList.remove('opacity-50', 'cursor-not-allowed');
                 if (spinner) spinner.classList.add('hidden');
@@ -1744,26 +3789,51 @@ function runWorkflow() {
 
     setRunning(true);
     saveConfig().then(() => {
-        // Fixed URL spaces
         fetch(`/api/projects/${currentProjectId}/run`, { method: 'POST' })
             .then(async res => {
                 const data = await res.json();
-                lastExecutionResult = data; // NEW: Save Global Result
+                lastExecutionResult = data;
 
                 if (data.status === 'error' || data.status === 'failed') {
-                    // Check if it's the specific "No Trigger" error
-                    if (data.message === "No Trigger Node found") {
-                        throw new Error("Add a Trigger Node to start.");
+                    // Build detailed error with execution log
+                    let errorDetail = data.message || data.error || 'Unknown Execution Error';
+
+                    // Format execution log for display
+                    const log = data.log || [];
+                    if (log.length > 0) {
+                        errorDetail += '\n\n── Execution Log ──\n';
+                        log.forEach((entry, i) => {
+                            const icon = entry.status === 'success' ? '✅' : entry.status === 'error' ? '❌' : '⏭️';
+                            errorDetail += `${icon} ${entry.node_name || entry.type || 'Node'} (${entry.node_id}): ${entry.status}`;
+                            if (entry.error) errorDetail += ` → ${entry.error}`;
+                            if (entry.output) errorDetail += `\n   Output: ${entry.output.substring(0, 150)}`;
+                            errorDetail += '\n';
+                        });
                     }
-                    throw new Error(data.message || data.error || 'Unknown Execution Error');
+
+                    // Add traceback if available
+                    if (data.traceback) {
+                        errorDetail += '\n── Python Traceback ──\n' + data.traceback;
+                    }
+
+                    showStatus('error', 'Execution Failed', errorDetail);
+                    addSystemLog('error', 'Workflow Execution Failed: ' + (data.message || 'Unknown'));
+
+                    // Still populate preview so user can see partial results
+                    if (data.final_context || data.log) {
+                        populateJsonPreview(data);
+                        if (outputBtn) { outputBtn.classList.remove('hidden'); outputBtn.classList.add('flex'); }
+                    }
+                    return;
                 }
 
                 console.log("Execution Result:", data);
-
-                // NEW: Use Toast instead of Alert
                 showStatus('success', 'Workflow Executed', 'Check output for details.');
+                addSystemLog('success', 'Workflow executed successfully.');
 
-                // NEW: Show Output Button
+                // Populate JSON preview panel with collected data
+                populateJsonPreview(data);
+
                 if (outputBtn) {
                     outputBtn.classList.remove('hidden');
                     outputBtn.classList.add('flex');
@@ -1772,12 +3842,132 @@ function runWorkflow() {
             .catch(err => {
                 console.error(err);
                 showStatus('error', 'Execution Failed', err.message);
+                addSystemLog('error', 'Workflow Execution Failed: ' + err.message);
             })
             .finally(() => {
                 setRunning(false);
             });
     });
 }
+
+// --- JSON DATA PREVIEW PANEL ---
+function toggleJsonBottomBar() {
+    const content = document.getElementById('json-bar-content');
+    const chevron = document.getElementById('json-bar-chevron');
+    if (!content) return;
+    const isHidden = content.classList.contains('hidden');
+    if (isHidden) {
+        content.classList.remove('hidden');
+        if (chevron) chevron.textContent = '▼';
+        // Re-render if we have cached data
+        if (lastExecutionResult && lastExecutionResult.final_context) {
+            populateJsonPreview(lastExecutionResult);
+        }
+    } else {
+        content.classList.add('hidden');
+        if (chevron) chevron.textContent = '▲';
+    }
+}
+
+function populateJsonPreview(data) {
+    const container = document.getElementById('json-preview-content');
+    const countEl = document.getElementById('json-bar-count');
+    const content = document.getElementById('json-bar-content');
+    const chevron = document.getElementById('json-bar-chevron');
+    if (!container) return;
+
+    const context = data.final_context || {};
+    const log = data.log || [];
+
+    // Filter out internal node IDs (numeric)
+    const entries = Object.entries(context).filter(([key]) => {
+        if (/^\d+$/.test(key)) return false;
+        return true;
+    });
+
+    // Update count in header
+    if (countEl) {
+        countEl.textContent = entries.length > 0 ? `(${entries.length} fields)` : '(empty)';
+        countEl.className = entries.length > 0 ? 'text-[10px] text-green-500 ml-1 font-bold' : 'text-[10px] text-gray-600 ml-1';
+    }
+
+    if (entries.length === 0) {
+        container.innerHTML = `<div class="text-center text-gray-500 text-xs py-3 w-full">
+            <span class="text-lg">📭</span>
+            <span class="ml-2">No JSON fields collected. Run your workflow.</span>
+        </div>`;
+        return;
+    }
+
+    // Auto-expand the bar when data arrives
+    if (content && content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        if (chevron) chevron.textContent = '▼';
+    }
+
+    // Build compact card grid
+    let html = '<div class="flex flex-wrap gap-2" style="max-height:160px; overflow-y:auto; padding-bottom:4px;">';
+
+    entries.forEach(([varName, value]) => {
+        let preview = '';
+        let bgColor = 'bg-gray-800';
+        let textColor = 'text-blue-400';
+
+        if (typeof value === 'string') {
+            const stripped = value.replace(/<[^>]*>/g, '').trim();
+            preview = stripped.substring(0, 40) + (stripped.length > 40 ? '…' : '');
+            if (value.includes('<html') || value.includes('<div') || value.includes('<table')) {
+                bgColor = 'bg-purple-900/30';
+                textColor = 'text-purple-400';
+            }
+        } else if (typeof value === 'object' && value !== null) {
+            preview = JSON.stringify(value).substring(0, 40) + '…';
+            bgColor = 'bg-amber-900/20';
+            textColor = 'text-amber-400';
+        } else {
+            preview = String(value).substring(0, 40);
+        }
+
+        html += `
+        <div class="${bgColor} border border-gray-700 rounded-md px-2.5 py-1.5 hover:border-gray-500 transition cursor-pointer group relative">
+             <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5" onclick="copyJsonVar('${varName}')" title="Click to copy">
+                    <code class="${textColor} text-[11px] font-mono font-bold whitespace-nowrap">{{${varName}}}</code>
+                    <span class="text-gray-600 text-[10px] opacity-0 group-hover:opacity-100 transition">📋</span>
+                </div>
+                <!-- Eye Icon for Preview -->
+                <button onclick="viewJsonVar('${varName}'); event.stopPropagation();" class="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition p-0.5 rounded hover:bg-white/10" title="View Full Content">
+                    👁️
+                </button>
+            </div>
+            <div class="text-gray-500 text-[10px] mt-0.5 truncate max-w-[200px]" onclick="copyJsonVar('${varName}')">${escapeHtml(preview)}</div>
+        </div>`;
+    });
+
+    html += '</div>';
+
+    container.innerHTML = html;
+    // Reset container styles for the new layout
+    container.className = 'px-3 py-2 overflow-x-auto';
+    container.style.maxHeight = '180px';
+    container.style.overflowY = 'auto';
+}
+
+function copyJsonVar(varName) {
+    navigator.clipboard.writeText('{{' + varName + '}}').then(() => {
+        showStatus('success', 'Copied!', '{{' + varName + '}} copied to clipboard');
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // connectWebSocket(); // Call in initApp instead
+});
 
 // Init Logic
 function initApp() {
@@ -1790,6 +3980,9 @@ function initApp() {
 
     // Fetch System Info
     fetchSystemInfo();
+
+    // Connect WS
+    connectWebSocket();
 
     // Check URL Params for deep linking
     const urlParams = new URLSearchParams(window.location.search);
@@ -1805,12 +3998,6 @@ function initApp() {
     if (createForm) {
         createForm.removeEventListener('submit', handleCreateProject); // Prevent dupes if re-init
         createForm.addEventListener('submit', handleCreateProject);
-    }
-
-    const deleteBtn = document.getElementById('confirm-delete-btn');
-    if (deleteBtn) {
-        deleteBtn.removeEventListener('click', handleConfirmDelete);
-        deleteBtn.addEventListener('click', handleConfirmDelete);
     }
 
     const settingsForm = document.getElementById('global-settings-form');
@@ -1837,3 +4024,299 @@ window.addEventListener('load', () => {
         setTimeout(fetchProjects, 100);
     }
 });
+
+
+// --- GOOGLE OAUTH & PICKER ---
+
+let googlePickerApiLoaded = false;
+
+async function checkOAuthStatus() {
+    if (!currentProjectId) return;
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/auth_status`);
+        const data = await res.json();
+        const statusEl = document.getElementById('oauth-status');
+        const connectBtn = document.getElementById('btn-connect-google');
+        const disconnectBtn = document.getElementById('btn-disconnect-google');
+        if (statusEl) {
+            if (data.connected) {
+                statusEl.innerHTML = `✅ <span class="text-green-400">Connected</span>`;
+                statusEl.classList.remove('text-gray-500');
+                if (connectBtn) connectBtn.classList.add('hidden');
+                if (disconnectBtn) { disconnectBtn.classList.remove('hidden'); disconnectBtn.classList.add('flex'); }
+            } else {
+                const errorMsg = data.error || 'Not Connected';
+                statusEl.innerHTML = `<span class="text-red-400">${errorMsg}</span>`;
+                statusEl.classList.add('text-gray-500');
+                if (connectBtn) connectBtn.classList.remove('hidden');
+                if (disconnectBtn) { disconnectBtn.classList.add('hidden'); disconnectBtn.classList.remove('flex'); }
+            }
+        }
+    } catch (e) {
+        console.error("Auth status check failed", e);
+    }
+}
+
+async function connectGoogleDrive() {
+    if (!currentProjectId) return showStatus('error', 'Error', 'No project selected.');
+
+    // 1. Get Auth URL
+    try {
+        const res = await fetch(`/api/auth/google/url?project_id=${currentProjectId}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        // 2. Open Popup
+        const width = 500;
+        const height = 600;
+        const left = (window.screen.width / 2) - (width / 2);
+        const top = (window.screen.height / 2) - (height / 2);
+
+        window.open(data.url, 'google_oauth', `width=${width},height=${height},top=${top},left=${left}`);
+
+    } catch (e) {
+        showStatus('error', 'OAuth Failed', e.message);
+    }
+}
+
+// Handle Message from Popup
+window.addEventListener('message', (event) => {
+    if (event.data === 'oauth_success') {
+        showStatus('success', 'Connected', 'Google Account linked successfully.');
+        checkOAuthStatus();
+    }
+});
+
+async function disconnectGoogle() {
+    if (!currentProjectId) return showStatus('error', 'Error', 'No project selected.');
+    const confirmed = await showConfirm('Disconnect Google Account from this project? You will need to reconnect to use Google features.', 'Disconnect Google', '🔌');
+    if (!confirmed) return;
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/disconnect_google`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Disconnected', 'Google Account has been disconnected.');
+            checkOAuthStatus();
+        } else {
+            throw new Error(data.error || 'Disconnect failed');
+        }
+    } catch (e) {
+        showStatus('error', 'Error', e.message);
+    }
+}
+
+// Picker Logic
+function loadGoogleApi() {
+    if (typeof gapi !== 'undefined') {
+        gapi.load('picker', { 'callback': onPickerApiLoad });
+    }
+}
+
+function onPickerApiLoad() {
+    googlePickerApiLoaded = true;
+}
+
+if (typeof gapi !== 'undefined') {
+    loadGoogleApi();
+} else {
+    window.addEventListener('load', () => { if (typeof gapi !== 'undefined') loadGoogleApi(); });
+}
+
+async function openDrivePicker(callback) {
+    if (!googlePickerApiLoaded) {
+        loadGoogleApi();
+        if (!googlePickerApiLoaded) return showStatus('error', 'API Error', 'Google Picker API not loaded. Check connection?');
+    }
+
+    if (!currentProjectId) return;
+
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/picker_token`);
+        if (!res.ok) throw new Error("Failed to get picker token");
+        const data = await res.json();
+
+        if (!data.token) {
+            const doConnect = await showConfirm('Google Drive is not connected. Connect now?', 'Connect Google', '🔗');
+            if (doConnect) connectGoogleDrive();
+            return;
+        }
+
+        const view = new google.picker.View(google.picker.ViewId.SPREADSHEETS);
+        const picker = new google.picker.PickerBuilder()
+            .setAppId(data.app_id)
+            .setOAuthToken(data.token)
+            .addView(view)
+            .addView(new google.picker.DocsUploadView())
+            .setCallback((data) => {
+                if (data[google.picker.Response.ACTION] == google.picker.Action.PICKED) {
+                    const doc = data[google.picker.Response.DOCUMENTS][0];
+                    const fileId = doc[google.picker.Document.ID];
+                    callback(fileId, doc);
+                }
+            })
+            .build();
+        picker.setVisible(true);
+
+    } catch (e) {
+        showStatus('error', 'Picker Failed', e.message);
+    }
+}
+
+// --- SETTINGS LOGIC ---
+
+async function openSettings() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+
+        const elId = document.getElementById('gs-client-id');
+        const elSecret = document.getElementById('gs-client-secret');
+        if (elId) elId.value = settings.google_client_id || '';
+        if (elSecret) elSecret.value = settings.google_client_secret || '';
+    } catch (e) {
+        console.error("Failed to load settings", e);
+    }
+}
+
+async function saveGlobalSettings() {
+    const clientId = document.getElementById('gs-client-id').value;
+    const clientSecret = document.getElementById('gs-client-secret').value;
+
+    try {
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                google_client_id: clientId,
+                google_client_secret: clientSecret
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Saved', 'Global settings updated');
+            document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('settings-modal').classList.remove('flex');
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (e) {
+        showStatus('error', 'Save Failed', e.message);
+    }
+}
+
+// Hook into openConfig (Global Override) to verify/init OAuth status
+// We need to wait for original function to be available if defined elsewhere, 
+// but since we are at the end of the file, it should be fine.
+const _originalOpenConfig = window.openConfig;
+window.openConfig = async function (id) {
+    if (typeof _originalOpenConfig === 'function') {
+        await _originalOpenConfig(id);
+    } else {
+        // Checking if openConfig is defined on global scope but not window
+        // In browsers, global functions are on window.
+        // If not found, maybe retry or just proceed with check.
+        // console.warn("Original openConfig not found via window.openConfig");
+    }
+    // Check OAuth Status
+    checkOAuthStatus();
+};
+
+// --- VERSION HISTORY ---
+
+function toggleVersionPanel() {
+    const panel = document.getElementById('version-history-panel');
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        panel.classList.add('flex');
+        loadVersionHistory();
+    } else {
+        panel.classList.add('hidden');
+        panel.classList.remove('flex');
+    }
+}
+
+async function loadVersionHistory() {
+    if (!currentProjectId) return;
+    const list = document.getElementById('version-list');
+    list.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">Loading...</p>';
+
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/versions`);
+        const data = await res.json();
+
+        if (!data.versions || data.versions.length === 0) {
+            list.innerHTML = '<p class="text-gray-500 text-xs text-center py-4">No versions yet. Save your workflow to create the first version.</p>';
+            return;
+        }
+
+        list.innerHTML = data.versions.map(v => {
+            const d = new Date(v.created_at + 'Z');
+            const timeStr = d.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            return `
+                <div class="bg-gray-700/50 border border-gray-600 rounded-lg p-3 hover:border-blue-500/50 transition">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-bold text-blue-400">${v.label}</span>
+                        <span class="text-[10px] text-gray-500">${timeStr}</span>
+                    </div>
+                    <button onclick="restoreVersion('${v.id}', '${v.label}')"
+                        class="w-full mt-1.5 py-1.5 bg-gray-600 hover:bg-amber-600 text-gray-300 hover:text-white text-[11px] rounded transition flex items-center justify-center gap-1">
+                        ↩️ Restore
+                    </button>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<p class="text-red-400 text-xs text-center py-4">Failed to load versions.</p>';
+    }
+}
+
+async function createManualSnapshot() {
+    if (!currentProjectId) return;
+    const label = prompt('Name this snapshot (optional):') || '';
+
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/versions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: label || undefined })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Snapshot Saved', `Version "${data.label}" created.`);
+            loadVersionHistory();
+        } else {
+            throw new Error('Failed');
+        }
+    } catch (e) {
+        showStatus('error', 'Snapshot Failed', e.message);
+    }
+}
+
+async function restoreVersion(versionId, label) {
+    const confirmed = await showConfirm(`Restore version "${label}"? This will replace your current workflow. Make sure to save a snapshot first if needed.`, 'Restore Version', '⏳');
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch(`/api/projects/${currentProjectId}/versions/${versionId}/restore`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            showStatus('success', 'Restored!', `Workflow restored to "${label}". Reloading...`);
+            // Reload the project to get the restored workflow
+            setTimeout(() => {
+                openConfig(currentProjectId);
+            }, 500);
+        } else {
+            throw new Error(data.message || 'Restore failed');
+        }
+    } catch (e) {
+        showStatus('error', 'Restore Failed', e.message);
+    }
+}

@@ -1,31 +1,43 @@
 import os
 import json
 import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("GOOGLE_API_KEY")
+# Support both naming conventions
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+client = None
+
 if API_KEY:
-    genai.configure(api_key=API_KEY)
+    client = genai.Client(api_key=API_KEY)
 
 def call_llm(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> str:
     """
     Calls the LLM with a system and user prompt.
     Returns the text response.
     """
-    if not API_KEY:
-        return "Error: GOOGLE_API_KEY not found in .env"
+    if not client:
+        print("Error: GEMINI_API_KEY not found in .env")
+        return "Error: API Key missing. Please add GEMINI_API_KEY to .env file."
 
     try:
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_prompt
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt
+            )
         )
-        response = model.generate_content(user_prompt)
         return response.text
     except Exception as e:
         return f"Error calling LLM: {str(e)}"
+
+# Alias for compatibility
+def generate_text(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> str:
+    return call_llm(system_prompt, user_prompt, model_name)
 
 def generate_json(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> dict:
     """
@@ -41,6 +53,12 @@ def generate_json(system_prompt: str, user_prompt: str, model_name: str = "gemin
     response_text = response_text.replace("```json", "").replace("```", "").strip()
     
     try:
+        # Handle cases where text is before/after JSON
+        start = response_text.find('{')
+        end = response_text.rfind('}') + 1
+        if start != -1 and end != -1:
+            response_text = response_text[start:end]
+            
         return json.loads(response_text)
     except json.JSONDecodeError:
         print(f"Failed to parse JSON from LLM response: {response_text}")

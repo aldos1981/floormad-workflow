@@ -7,4 +7,10 @@ python-multipart
 # json is standard library
 # os, sys, shutil, datetime are standard library
 a2wsgi
+google-generativeai
+python-dotenv
 
+
+
+google-auth-oauthlib
+google-auth-httplib2
