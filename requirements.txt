@@ -3,7 +3,7 @@ uvicorn[standard]
 requests
 python-multipart
 a2wsgi
-google-generativeai
+google-genai
 python-dotenv
 google-auth-oauthlib
 google-auth-httplib2
