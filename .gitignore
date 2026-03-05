@@ -1,28 +1,45 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 *.egg-info/
 *.egg
-dist/
 build/
+.venv/
 venv/
+
+# Environment & Secrets
 .env
+service-account.json
 
 # Database
 *.db
 *.sqlite3
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
+
+# Temp & Logs
+.tmp/
+*.log
+error_log.txt
+server.log
 
 # IDE
 .vscode/
 .idea/
 
-# Uploads (regenerated at runtime)
+# Debug scripts
+debug_*.py
+test_*.py
+
+# Uploads (user data)
 uploads/*
 !uploads/.gitkeep
 
-# Dist packages
+# Dist archives
 dist_workflow_*.zip
+
+# API response dumps
+api_response.json

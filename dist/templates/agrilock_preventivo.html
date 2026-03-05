@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .logo img {
+            max-width: 250px;
+        }
+
+        .titolo-preventivo {
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #056837;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #006837;
+            padding-bottom: 5px;
+            margin: 10px 0;
+            border-bottom: none;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        table th {
+            background-color: #f1f1f1;
+            width: 35%;
+        }
+
+        .firma {
+            margin-top: 30px;
+            font-size: 13px;
+            color: #555;
+            border-top: 1px solid #ddd;
+            padding-top: 15px;
+        }
+
+        .firma strong {
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">
+            <img src="https://agrilock.eu/agrilock_logo.png" alt="Agrilock Logo">
+        </div>
+
+        <div class="titolo-preventivo">
+            Preventivo #{{preventivo_numero}}
+        </div>
+
+        <!-- TESTO AI - parte tecnica (prima del DIVIDER) -->
+        <div>
+            {{testo_tecnico}}
+        </div>
+
+        <h2>Riepilogo dati cliente</h2>
+        <table>
+            <tr>
+                <th>Nome</th>
+                <td>{{nome}}</td>
+            </tr>
+            <tr>
+                <th>Email</th>
+                <td>{{email}}</td>
+            </tr>
+            <tr>
+                <th>Telefono</th>
+                <td>{{telefono}}</td>
+            </tr>
+            <tr>
+                <th>Data richiesta</th>
+                <td>{{data_richiesta}}</td>
+            </tr>
+            <tr>
+                <th>Località</th>
+                <td>{{localita}}</td>
+            </tr>
+            <tr>
+                <th>Utilizzo</th>
+                <td>{{utilizzo}}</td>
+            </tr>
+            <tr>
+                <th>Descrizione progetto</th>
+                <td>{{richiesta}}</td>
+            </tr>
+        </table>
+
+        <h2>Riepilogo tecnico</h2>
+        <table>
+            <tr>
+                <th>Superficie richiesta</th>
+                <td>{{mq}} mq</td>
+            </tr>
+            <tr>
+                <th>Numero piastrelle</th>
+                <td>{{piastrelle}} pz.</td>
+            </tr>
+            <tr>
+                <th>Peso totale</th>
+                <td>{{peso_totale}} kg</td>
+            </tr>
+            <tr>
+                <th>Zona spedizione</th>
+                <td>{{macro_zona}}</td>
+            </tr>
+            <tr>
+                <th>Fascia di prezzo</th>
+                <td>{{fascia}}</td>
+            </tr>
+            <tr>
+                <th>Sconto applicato</th>
+                <td>{{sconto_percentuale}}</td>
+            </tr>
+            <tr>
+                <th>Prezzo unitario</th>
+                <td>€ {{prezzo_unitario}} al m²</td>
+            </tr>
+
+            <!-- Riga Totale Preventivo -->
+            <tr style="background-color:#056837;">
+                <th style="text-align:left; padding:15px; background-color:#056837; color:#fff;">
+                    <h1 style="margin:0;color:white; border-bottom:none;">Totale Preventivo</h1>
+                </th>
+                <td style="text-align:right; padding:15px; background-color:#056837; color:white;">
+                    <h1
+                        style="margin:0; font-size:28px; padding-bottom:5px; border-bottom:1px solid #eee; display:inline-block;">
+                        € {{totale_materiale}}
+                        <span style="font-size:14px; font-weight:normal; margin-left:5px;">IVA esclusa</span>
+                    </h1>
+                    <br>
+                    <span style="font-size:22px; font-weight:bold;">
+                        € {{totale_iva_inclusa}}
+                    </span>
+                    <span style="font-size:14px; font-weight:normal; margin-left:5px;">IVA inclusa (22%)</span>
+                </td>
+            </tr>
+        </table>
+
+        <!-- TESTO AI - parte emozionale (dopo il DIVIDER) -->
+        <div>
+            {{testo_emozionale}}
+        </div>
+
+        <div class="firma">
+            <p><strong>AGRILOCK by IN &amp; ON srl</strong><br>
+                Tezze del Piave (TV)<br>
+                P.Iva: IT04645820269<br>
+                Numero Verde: 800.194.245<br>
+                Tel: (+39) 335 779 23 95<br>
+                Mail: info@agrilock.eu<br>
+                <a href="https://www.agrilock.eu">www.agrilock.eu</a>
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>
