@@ -303,6 +303,41 @@ class WorkflowEngine:
                 logger.info("No pending rows found.")
                 return {"_status": "no_data"}
 
+            # VALIDATION: Skip rows where all important fields are empty
+            # Common contact fields that should have real data
+            important_fields = ['nome', 'name', 'email', 'telefono', 'phone', 'cognome', 'surname', 'azienda', 'company', 'indirizzo', 'address']
+            
+            valid_rows = []
+            for r in rows:
+                # Check if at least ONE important field has real content
+                has_data = False
+                for field in important_fields:
+                    val = r.get(field, '')
+                    if val and str(val).strip() and str(val).strip() not in ['', 'None', 'null', 'undefined']:
+                        has_data = True
+                        break
+                
+                # Fallback: check if ANY non-internal field has content (excluding status columns)
+                if not has_data:
+                    skip_keys = {'_row_number', 'stato', 'status', 'data', 'date', 'timestamp', 'n_preventivo', 'numero'}
+                    for k, v in r.items():
+                        if k.startswith('_') or k.lower() in skip_keys:
+                            continue
+                        if v and str(v).strip() and len(str(v).strip()) > 1:
+                            has_data = True
+                            break
+                
+                if has_data:
+                    valid_rows.append(r)
+                else:
+                    logger.info(f"Skipping empty row #{r.get('_row_number')} — no meaningful data")
+            
+            if not valid_rows:
+                logger.info("All rows were empty/invalid. No data to process.")
+                return {"_status": "no_data"}
+            
+            rows = valid_rows
+
             # Process the FIRST pending row
             row = rows[0]
             logger.info(f"Processing Row #{row.get('_row_number')}: {list(row.keys())}")
@@ -548,6 +583,34 @@ class WorkflowEngine:
         raw_to = config.get('email_to', '') or config.get('to_field', '') # Config key might vary based on frontend update
         recipient = self._resolve_variables(raw_to, execution_context)
         
+        # VALIDATION: Check for fake/placeholder email addresses
+        if recipient:
+            import re
+            recipient_clean = str(recipient).strip().lower()
+            
+            # Fake email patterns
+            fake_email_domains = ['example.com', 'example.org', 'test.com', 'test.it', 'fake.com', 'placeholder.com', 'noreply.com']
+            fake_email_prefixes = ['test@', 'example@', 'fake@', 'placeholder@', 'noemail@', 'no-email@', 'nessuna@']
+            
+            is_fake_email = False
+            for domain in fake_email_domains:
+                if recipient_clean.endswith('@' + domain):
+                    is_fake_email = True
+                    break
+            for prefix in fake_email_prefixes:
+                if recipient_clean.startswith(prefix):
+                    is_fake_email = True
+                    break
+            
+            # Basic format check
+            if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', recipient_clean):
+                logger.warning(f"[Email] ❌ SKIPPED: Invalid email format: {recipient}")
+                return {"status": "skipped", "reason": f"Invalid email format: {recipient}"}
+            
+            if is_fake_email:
+                logger.warning(f"[Email] ❌ SKIPPED: Fake/placeholder email detected: {recipient}")
+                return {"status": "skipped", "reason": f"Fake/placeholder email: {recipient}"}
+        
         # 1. Get Project SMTP Config
         project = self.context.get('project')
         if not project:
@@ -775,6 +838,44 @@ class WorkflowEngine:
         if not phone:
             logger.warning("[WhatsApp] ❌ SKIPPED: No phone number found")
             return {"status": "skipped", "reason": "No phone number found"}
+
+        # VALIDATION: Clean and validate phone number
+        phone_clean = str(phone).strip()
+        # Remove spaces, dashes, dots, parentheses
+        phone_digits = ''.join(c for c in phone_clean if c.isdigit())
+        
+        # Blacklist of known placeholder/fake numbers
+        fake_patterns = [
+            '3401234567', '1234567890', '0000000000', '1111111111',
+            '3331234567', '3201234567', '3281234567', '3381234567',
+            '3391234567', '3471234567', '3481234567', '3491234567',
+        ]
+        
+        # Check against blacklist (with or without country code prefix)
+        is_fake = False
+        for pattern in fake_patterns:
+            if phone_digits.endswith(pattern):
+                is_fake = True
+                break
+        
+        # Check for sequential digit patterns (1234567, 9876543, etc.)
+        if not is_fake and len(phone_digits) >= 7:
+            last7 = phone_digits[-7:]
+            if all(int(last7[i+1]) == int(last7[i]) + 1 for i in range(6)):
+                is_fake = True  # ascending sequence
+            if all(int(last7[i+1]) == int(last7[i]) - 1 for i in range(6)):
+                is_fake = True  # descending sequence
+            if len(set(last7)) == 1:
+                is_fake = True  # all same digit
+        
+        # Min length check (at least 8 digits for a real phone)
+        if len(phone_digits) < 8:
+            logger.warning(f"[WhatsApp] ❌ SKIPPED: Phone too short ({phone_clean}, {len(phone_digits)} digits)")
+            return {"status": "skipped", "reason": f"Phone number too short: {phone_clean}"}
+        
+        if is_fake:
+            logger.warning(f"[WhatsApp] ❌ SKIPPED: Fake/placeholder phone detected: {phone_clean}")
+            return {"status": "skipped", "reason": f"Fake/placeholder phone number: {phone_clean}"}
 
         # Message Body
         message_var = config.get('message_var', '')
