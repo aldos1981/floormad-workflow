@@ -307,6 +307,69 @@ def get_settings():
     conn.close()
     return {row['key']: row['value'] for row in rows}
 
+@app.get("/api/debug/credentials/{project_id}")
+def debug_credentials(project_id: str):
+    """Debug endpoint to check credential status without exposing secrets"""
+    conn = get_db_connection()
+    project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    
+    result = {"project_id": project_id}
+    
+    # Check project-level SA
+    if project:
+        sa_json = dict(project).get('service_account_json', '')
+        result["project_sa"] = {
+            "exists": bool(sa_json and len(sa_json) > 10),
+            "length": len(sa_json) if sa_json else 0,
+        }
+        if sa_json and len(sa_json) > 10:
+            try:
+                info = json.loads(sa_json)
+                result["project_sa"]["client_email"] = info.get("client_email", "MISSING")
+                result["project_sa"]["has_private_key"] = bool(info.get("private_key"))
+                result["project_sa"]["private_key_length"] = len(info.get("private_key", ""))
+                result["project_sa"]["project_id_in_json"] = info.get("project_id", "MISSING")
+                # Quick validation
+                from google.oauth2.service_account import Credentials as SACreds
+                try:
+                    creds = SACreds.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+                    result["project_sa"]["valid"] = True
+                    result["project_sa"]["note"] = "Credentials parse OK (JWT signature check happens on API call)"
+                except Exception as e:
+                    result["project_sa"]["valid"] = False
+                    result["project_sa"]["error"] = str(e)
+            except json.JSONDecodeError as e:
+                result["project_sa"]["json_error"] = str(e)
+    else:
+        result["project_sa"] = {"exists": False, "error": "Project not found"}
+    
+    # Check global SA
+    row_sa = conn.execute("SELECT value FROM settings WHERE key='service_account_json'").fetchone()
+    if row_sa and row_sa['value'] and len(row_sa['value']) > 10:
+        try:
+            info = json.loads(row_sa['value'])
+            result["global_sa"] = {
+                "exists": True,
+                "length": len(row_sa['value']),
+                "client_email": info.get("client_email", "MISSING"),
+                "has_private_key": bool(info.get("private_key")),
+                "private_key_length": len(info.get("private_key", "")),
+            }
+        except:
+            result["global_sa"] = {"exists": True, "json_error": "Invalid JSON"}
+    else:
+        result["global_sa"] = {"exists": False, "length": len(row_sa['value']) if row_sa and row_sa['value'] else 0}
+    
+    # Check API key
+    row_key = conn.execute("SELECT value FROM settings WHERE key='google_api_key'").fetchone()
+    result["api_key"] = {
+        "exists": bool(row_key and row_key['value'] and len(row_key['value']) > 5),
+        "length": len(row_key['value']) if row_key and row_key['value'] else 0
+    }
+    
+    conn.close()
+    return result
+
 @app.post("/api/settings")
 def update_settings(settings: GlobalSettings):
     conn = get_db_connection()

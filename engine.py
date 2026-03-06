@@ -699,17 +699,28 @@ def get_google_creds(project_config):
     Returns (creds, type)
     type: 'service_account' or 'api_key'
     """
+    import logging
+    logger = logging.getLogger('google_creds')
+    
     # 1. Try Project Service Account
     sa_json = project_config.get('service_account_json')
     if sa_json and len(sa_json) > 10:
         try:
             info = json.loads(sa_json)
-            # Validation: check for client_email
+            client_email = info.get('client_email', 'MISSING')
+            has_private_key = bool(info.get('private_key'))
+            pk_len = len(info.get('private_key', ''))
+            logger.info(f"[CREDS] Project SA found: email={client_email}, has_key={has_private_key}, key_len={pk_len}")
             if info.get('client_email'):
                 creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+                logger.info(f"[CREDS] ✅ Using PROJECT service account: {client_email}")
                 return creds, 'service_account'
-        except:
-            pass # Fallback
+        except json.JSONDecodeError as e:
+            logger.error(f"[CREDS] ❌ Project SA JSON parse error: {e}")
+        except Exception as e:
+            logger.error(f"[CREDS] ❌ Project SA credential error: {e}")
+    else:
+        logger.info(f"[CREDS] No project SA found (len={len(sa_json) if sa_json else 0})")
 
     # 2. Try Global Service Account
     try:
@@ -718,25 +729,40 @@ def get_google_creds(project_config):
         # Check SA
         row_sa = conn.execute("SELECT value FROM settings WHERE key='service_account_json'").fetchone()
         if row_sa and row_sa['value'] and len(row_sa['value']) > 10:
-            info = json.loads(row_sa['value'])
-            if info.get('client_email'):
-                creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-                conn.close()
-                return creds, 'service_account'
+            try:
+                info = json.loads(row_sa['value'])
+                client_email = info.get('client_email', 'MISSING')
+                has_private_key = bool(info.get('private_key'))
+                pk_len = len(info.get('private_key', ''))
+                logger.info(f"[CREDS] Global SA found: email={client_email}, has_key={has_private_key}, key_len={pk_len}")
+                if info.get('client_email'):
+                    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+                    conn.close()
+                    logger.info(f"[CREDS] ✅ Using GLOBAL service account: {client_email}")
+                    return creds, 'service_account'
+            except json.JSONDecodeError as e:
+                logger.error(f"[CREDS] ❌ Global SA JSON parse error: {e}")
+            except Exception as e:
+                logger.error(f"[CREDS] ❌ Global SA credential error: {e}")
+        else:
+            logger.info(f"[CREDS] No global SA found in settings table")
         
         # Check API Key
         row_key = conn.execute("SELECT value FROM settings WHERE key='google_api_key'").fetchone()
         if row_key and row_key['value'] and len(row_key['value']) > 5:
             api_key = row_key['value']
             conn.close()
+            logger.info(f"[CREDS] ✅ Using API key (len={len(api_key)})")
             return api_key, 'api_key'
             
         conn.close()
+        logger.warning("[CREDS] ❌ No valid credentials found anywhere!")
     except Exception as e:
         try:
             conn.close()
         except:
             pass
+        logger.error(f"[CREDS] ❌ DB error: {e}")
         return {"success": False, "message": str(e), "trace": traceback.format_exc()}
 
 def sync_price_list(project_id, sheet_id, sheet_range="Foglio1!A:G"):
