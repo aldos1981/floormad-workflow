@@ -685,7 +685,7 @@ class WorkflowEngine:
         # 3a. Try via bridge (works on Railway)
         try:
             import requests as http_requests
-            bridge_response = http_requests.post(BRIDGE_URL, json={
+            bridge_payload = {
                 "action": "send_email",
                 "host": host,
                 "port": port,
@@ -696,14 +696,26 @@ class WorkflowEngine:
                 "subject": subject,
                 "html_body": full_email_html,
                 "plain_text": plain_text
-            }, timeout=30)
+            }
+            logger.info(f"Sending email via bridge to {recipient} (host={host}, port={port}, user={user})")
+            bridge_response = http_requests.post(BRIDGE_URL, json=bridge_payload, timeout=30, allow_redirects=False)
+            
+            logger.info(f"Bridge HTTP status: {bridge_response.status_code}")
+            logger.info(f"Bridge response body: {bridge_response.text[:500]}")
+            
+            # Check for redirects (HTTP->HTTPS loses POST body)
+            if bridge_response.status_code in (301, 302, 307, 308):
+                redirect_url = bridge_response.headers.get('Location', '')
+                logger.warning(f"Bridge redirect detected to: {redirect_url} — retrying with new URL")
+                bridge_response = http_requests.post(redirect_url, json=bridge_payload, timeout=30)
+                logger.info(f"Redirect response: {bridge_response.status_code} - {bridge_response.text[:500]}")
             
             result = bridge_response.json()
             if result.get("success"):
-                logger.info(f"Email sent via bridge to {recipient}")
-                return {"status": "sent", "recipient": recipient, "method": "bridge"}
+                logger.info(f"Email sent via bridge to {recipient} — debug: {result.get('debug', [])}")
+                return {"status": "sent", "recipient": recipient, "method": "bridge", "bridge_debug": result.get('debug', [])}
             else:
-                logger.warning(f"Bridge email failed: {result.get('message')}, trying direct SMTP...")
+                logger.warning(f"Bridge email failed: {result.get('message')}, debug: {result.get('debug', [])}, trying direct SMTP...")
         except Exception as bridge_err:
             logger.warning(f"Bridge unavailable ({bridge_err}), trying direct SMTP...")
         
