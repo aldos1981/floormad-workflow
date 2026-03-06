@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import uuid
 import json
-import sqlite3
+
 from database import get_db_connection, init_db
 from workflow_engine import WorkflowEngine
 from google_auth_oauthlib.flow import Flow
@@ -495,13 +495,15 @@ def update_project(project_id: str, project: ProjectUpdate):
                 "INSERT INTO workflow_versions (id, project_id, workflow_json, label) VALUES (?, ?, ?, ?)",
                 (str(uuid.uuid4()), project_id, wf_json_str, version_label)
             )
-            # Keep only last 20 versions
-            conn.execute("""
-                DELETE FROM workflow_versions WHERE id NOT IN (
-                    SELECT id FROM workflow_versions WHERE project_id = ?
-                    ORDER BY created_at DESC LIMIT 20
-                ) AND project_id = ?
-            """, (project_id, project_id))
+            # Keep only last 20 versions (compatible with both SQLite and PostgreSQL)
+            old_versions = conn.execute(
+                "SELECT id FROM workflow_versions WHERE project_id = ? ORDER BY created_at DESC",
+                (project_id,)
+            ).fetchall()
+            if len(old_versions) > 20:
+                ids_to_delete = [v['id'] for v in old_versions[20:]]
+                for vid in ids_to_delete:
+                    conn.execute("DELETE FROM workflow_versions WHERE id = ?", (vid,))
         
         conn.commit()
     except Exception as e:

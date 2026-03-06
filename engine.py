@@ -713,8 +713,7 @@ def get_google_creds(project_config):
 
     # 2. Try Global Service Account
     try:
-        conn = sqlite3.connect('floormad.db')
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
         
         # Check SA
         row_sa = conn.execute("SELECT value FROM settings WHERE key='service_account_json'").fetchone()
@@ -734,7 +733,10 @@ def get_google_creds(project_config):
             
         conn.close()
     except Exception as e:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
         return {"success": False, "message": str(e), "trace": traceback.format_exc()}
 
 def sync_price_list(project_id, sheet_id, sheet_range="Foglio1!A:G"):

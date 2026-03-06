@@ -13,3 +13,4 @@ openpyxl
 aiofiles
 websockets
 pdfplumber
+psycopg2-binary
