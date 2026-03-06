@@ -91,12 +91,163 @@ class GlobalSettings(BaseModel):
     google_client_id: Optional[str] = None
     google_client_secret: Optional[str] = None
 
-# API Endpoints
+import asyncio
+import logging
+from datetime import datetime, timedelta
+
+logger = logging.getLogger("cron_scheduler")
+
+# Minimum interval between cron runs for the same project (prevents spam)
+MIN_CRON_INTERVAL_MINUTES = 4
+
+# Track last cron run time per project
+_last_cron_runs: Dict[str, datetime] = {}
+
+async def cron_scheduler_loop():
+    """
+    Background task that checks active projects for cron triggers
+    and runs their workflows automatically.
+    """
+    logger.info("🕐 Cron Scheduler started")
+    
+    # Wait 10 seconds for the app to fully initialize
+    await asyncio.sleep(10)
+    
+    while True:
+        try:
+            from croniter import croniter
+            
+            conn = get_db_connection()
+            # Get all active projects
+            projects = conn.execute(
+                "SELECT id, name, status, workflow_json FROM projects WHERE status = 'active'"
+            ).fetchall()
+            
+            # Get global settings for API key
+            settings = conn.execute("SELECT key, value FROM settings").fetchall()
+            settings_dict = {row['key']: row['value'] for row in settings}
+            conn.close()
+            
+            now = datetime.now()
+            
+            for project in projects:
+                try:
+                    workflow_json = project['workflow_json']
+                    if not workflow_json:
+                        continue
+                    
+                    workflow_data = json.loads(workflow_json)
+                    
+                    # Find the TRIGGER node and get its cron_expression
+                    cron_expr = None
+                    trigger_type = None
+                    nodes = workflow_data.get('drawflow', {}).get('Home', {}).get('data', {})
+                    
+                    for node_id, node in nodes.items():
+                        if node.get('name') == 'TRIGGER':
+                            config = node.get('data', {}).get('config', {})
+                            trigger_type = config.get('trigger_type', 'manual')
+                            cron_expr = config.get('cron_expression', '')
+                            break
+                    
+                    # Skip if not a cron trigger or no expression
+                    if trigger_type != 'cron' or not cron_expr or not cron_expr.strip():
+                        continue
+                    
+                    # Validate cron expression
+                    if not croniter.is_valid(cron_expr):
+                        logger.warning(f"Invalid cron expression '{cron_expr}' for project {project['name']}")
+                        continue
+                    
+                    # Check if cron matches current minute
+                    cron = croniter(cron_expr, now - timedelta(seconds=60))
+                    next_run = cron.get_next(datetime)
+                    
+                    # Check if the next run is within the current minute
+                    current_minute = now.replace(second=0, microsecond=0)
+                    next_run_minute = next_run.replace(second=0, microsecond=0)
+                    
+                    if next_run_minute != current_minute:
+                        continue
+                    
+                    # Check minimum interval between runs (anti-spam)
+                    project_id = project['id']
+                    last_run = _last_cron_runs.get(project_id)
+                    if last_run and (now - last_run).total_seconds() < MIN_CRON_INTERVAL_MINUTES * 60:
+                        continue  # Too soon since last run
+                    
+                    # RUN THE WORKFLOW!
+                    _last_cron_runs[project_id] = now
+                    logger.info(f"🚀 Cron trigger firing for project '{project['name']}' (cron: {cron_expr})")
+                    
+                    # Run in background to not block the scheduler
+                    asyncio.create_task(_run_cron_workflow(project_id, project['name'], settings_dict))
+                    
+                except Exception as e:
+                    logger.error(f"Error checking cron for project {project.get('name', '?')}: {e}")
+            
+        except Exception as e:
+            logger.error(f"Cron scheduler error: {e}")
+        
+        # Check every 30 seconds
+        await asyncio.sleep(30)
+
+
+async def _run_cron_workflow(project_id: str, project_name: str, settings_dict: dict):
+    """Run a workflow triggered by cron schedule."""
+    try:
+        conn = get_db_connection()
+        project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        conn.close()
+        
+        if not project:
+            return
+        
+        workflow_data = json.loads(project['workflow_json'])
+        
+        engine = WorkflowEngine(
+            workflow_data,
+            context={"project": dict(project)},
+            api_key=settings_dict.get('google_api_key')
+        )
+        
+        # No status_callback for cron runs (no UI to update)
+        result = await engine.run(None)
+        
+        # Log the run
+        run_id = str(uuid.uuid4())
+        status = result.get('status', 'unknown')
+        log_count = len(result.get('log', []))
+        
+        conn = get_db_connection()
+        conn.execute(
+            "INSERT INTO runs (id, project_id, timestamp, leads_processed, status, log_details) VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, project_id, datetime.now().isoformat(), log_count, status, json.dumps(result.get('log', []), default=str))
+        )
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"✅ Cron workflow completed for '{project_name}': {status} ({log_count} nodes)")
+        
+        # Broadcast update via WebSocket 
+        await manager.broadcast(json.dumps({
+            "type": "cron_execution_complete",
+            "project_id": project_id,
+            "project_name": project_name,
+            "status": status,
+            "nodes_processed": log_count,
+            "timestamp": datetime.now().isoformat()
+        }))
+        
+    except Exception as e:
+        logger.error(f"❌ Cron workflow failed for '{project_name}': {e}")
+
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     init_db()
-
+    # Start the cron scheduler as a background task
+    asyncio.create_task(cron_scheduler_loop())
 @app.get("/")
 async def read_root():
     return FileResponse("static/index.html")

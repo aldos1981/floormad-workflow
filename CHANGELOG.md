@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.3.0] — 2026-03-06 14:35
+### ✨ Nuova Feature — Cron Scheduler Automatico
+- **Background Scheduler**: I workflow con trigger "Cron Schedule" ora partono automaticamente
+  - Loop asyncio al boot che controlla ogni 30s i progetti attivi
+  - Legge `cron_expression` dal nodo Trigger del workflow
+  - Usa `croniter` per valutare se è il momento di eseguire
+  - **Anti-spam**: intervallo minimo 4 minuti tra le esecuzioni dello stesso progetto
+  - Log delle esecuzioni nella tabella `runs`
+  - Notifica via WebSocket al frontend quando un cron run completa
+- Aggiunto `croniter` a requirements.txt
+
 ## [3.2.1] — 2026-03-06 12:37
 ### 🐛 Fix Critico — Email dal Workflow
 - **Bridge MIME Encoding**: L'HTML del preventivo (tabelle, €, ²) superava il limite SMTP di 998 char/riga

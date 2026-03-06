@@ -14,3 +14,4 @@ aiofiles
 websockets
 pdfplumber
 psycopg2-binary
+croniter
