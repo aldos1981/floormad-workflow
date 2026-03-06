@@ -2674,10 +2674,19 @@ function initLassoSelect() {
     document.addEventListener('keydown', function (e) {
         if (e.code === 'Space' && !e.target.closest('input, textarea, select') && !isSpacePanning) {
             e.preventDefault();
+            e.stopPropagation();
             isSpacePanning = true;
             panOverlay.style.display = 'block';
             container.classList.add('space-panning-active');
-            if (editor) editor.editor_mode = 'fixed';
+            if (editor) {
+                editor.editor_mode = 'fixed';
+                editor.drag = false;
+                editor.drag_point = false;
+            }
+            // Force stop any active node drag
+            document.querySelectorAll('.drawflow-node').forEach(n => {
+                n.style.pointerEvents = 'none';
+            });
         }
     });
     document.addEventListener('keyup', function (e) {
@@ -2688,6 +2697,10 @@ function initLassoSelect() {
             panOverlay.style.cursor = 'grab';
             container.classList.remove('space-panning-active');
             if (editor) editor.editor_mode = 'edit';
+            // Restore node interactions
+            document.querySelectorAll('.drawflow-node').forEach(n => {
+                n.style.pointerEvents = '';
+            });
         }
     });
 
@@ -3735,21 +3748,43 @@ function connectWebSocket() {
 function updateNodeStatus(nodeId, status, message) {
     if (!editor) return;
 
-    // Drawflow uses 'node-{id}' as ID for the element
     const el = document.getElementById(`node-${nodeId}`);
     if (!el) return;
 
-    // Reset classes
-    el.classList.remove('ring-4', 'ring-yellow-400', 'ring-green-500', 'ring-red-500', 'animate-pulse');
+    // Remove old overlays & classes
+    el.classList.remove('ring-4', 'ring-yellow-400', 'ring-green-500', 'ring-red-500', 'animate-pulse', 'opacity-50', 'grayscale');
+    el.style.removeProperty('box-shadow');
+    const oldOverlay = el.querySelector('.node-exec-overlay');
+    if (oldOverlay) oldOverlay.remove();
 
     if (status === 'running') {
         el.classList.add('ring-4', 'ring-yellow-400', 'animate-pulse');
+        el.style.boxShadow = '0 0 20px rgba(250,204,21,0.5), 0 0 40px rgba(250,204,21,0.2)';
+        // Add spinner overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'node-exec-overlay';
+        overlay.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:0.5rem;z-index:10;"><div style="width:28px;height:28px;border:3px solid rgba(250,204,21,0.3);border-top-color:#facc15;border-radius:50%;animation:spin 0.8s linear infinite;"></div></div>';
+        el.style.position = 'relative';
+        el.appendChild(overlay);
     } else if (status === 'completed' || status === 'success') {
         el.classList.add('ring-4', 'ring-green-500');
-        // Remove pulse after 1s
-        setTimeout(() => el.classList.remove('animate-pulse'), 1000);
+        el.style.boxShadow = '0 0 20px rgba(34,197,94,0.5), 0 0 40px rgba(34,197,94,0.2)';
+        // Add checkmark overlay briefly
+        const overlay = document.createElement('div');
+        overlay.className = 'node-exec-overlay';
+        overlay.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);border-radius:0.5rem;z-index:10;"><span style="font-size:28px;animation:popIn 0.3s ease-out;">✅</span></div>';
+        el.style.position = 'relative';
+        el.appendChild(overlay);
+        setTimeout(() => { const o = el.querySelector('.node-exec-overlay'); if (o) o.remove(); }, 2000);
+        setTimeout(() => { el.style.boxShadow = '0 0 10px rgba(34,197,94,0.3)'; }, 3000);
     } else if (status === 'error' || status === 'failed') {
         el.classList.add('ring-4', 'ring-red-500');
+        el.style.boxShadow = '0 0 20px rgba(239,68,68,0.5), 0 0 40px rgba(239,68,68,0.2)';
+        const overlay = document.createElement('div');
+        overlay.className = 'node-exec-overlay';
+        overlay.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);border-radius:0.5rem;z-index:10;"><span style="font-size:28px;animation:popIn 0.3s ease-out;">❌</span></div>';
+        el.style.position = 'relative';
+        el.appendChild(overlay);
     } else if (status === 'skipped') {
         el.classList.add('opacity-50', 'grayscale');
     }
@@ -3788,18 +3823,27 @@ function runWorkflow() {
     };
 
     setRunning(true);
+
+    // Show "running" spinner on trigger node immediately
+    const triggerEl = document.querySelector('.drawflow-node.TRIGGER');
+    if (triggerEl) {
+        const triggerNodeId = triggerEl.id.replace('node-', '');
+        updateNodeStatus(triggerNodeId, 'running', 'Starting...');
+    }
+
     saveConfig().then(() => {
         fetch(`/api/projects/${currentProjectId}/run`, { method: 'POST' })
             .then(async res => {
                 const data = await res.json();
                 lastExecutionResult = data;
 
+                // Animate execution log sequentially
+                const log = data.log || [];
+                await animateExecutionLog(log, data.status);
+
                 if (data.status === 'error' || data.status === 'failed') {
-                    // Build detailed error with execution log
                     let errorDetail = data.message || data.error || 'Unknown Execution Error';
 
-                    // Format execution log for display
-                    const log = data.log || [];
                     if (log.length > 0) {
                         errorDetail += '\n\n── Execution Log ──\n';
                         log.forEach((entry, i) => {
@@ -3811,7 +3855,6 @@ function runWorkflow() {
                         });
                     }
 
-                    // Add traceback if available
                     if (data.traceback) {
                         errorDetail += '\n── Python Traceback ──\n' + data.traceback;
                     }
@@ -3819,7 +3862,6 @@ function runWorkflow() {
                     showStatus('error', 'Execution Failed', errorDetail);
                     addSystemLog('error', 'Workflow Execution Failed: ' + (data.message || 'Unknown'));
 
-                    // Still populate preview so user can see partial results
                     if (data.final_context || data.log) {
                         populateJsonPreview(data);
                         if (outputBtn) { outputBtn.classList.remove('hidden'); outputBtn.classList.add('flex'); }
@@ -3831,7 +3873,6 @@ function runWorkflow() {
                 showStatus('success', 'Workflow Executed', 'Check output for details.');
                 addSystemLog('success', 'Workflow executed successfully.');
 
-                // Populate JSON preview panel with collected data
                 populateJsonPreview(data);
 
                 if (outputBtn) {
@@ -3848,6 +3889,28 @@ function runWorkflow() {
                 setRunning(false);
             });
     });
+}
+
+// Animate execution log nodes sequentially with delays
+async function animateExecutionLog(log, finalStatus) {
+    for (let i = 0; i < log.length; i++) {
+        const entry = log[i];
+        const nodeId = entry.node_id;
+
+        // Show running state
+        updateNodeStatus(nodeId, 'running', 'Processing...');
+
+        // Wait based on position (faster for earlier nodes)
+        await new Promise(r => setTimeout(r, 600));
+
+        // Show final state
+        const status = entry.status === 'success' ? 'completed' :
+            entry.status === 'skipped' ? 'skipped' : 'error';
+        updateNodeStatus(nodeId, status, entry.output || '');
+
+        // Small pause before next node
+        await new Promise(r => setTimeout(r, 300));
+    }
 }
 
 // --- JSON DATA PREVIEW PANEL ---
