@@ -13,7 +13,7 @@ client = None
 if API_KEY:
     client = genai.Client(api_key=API_KEY)
 
-def call_llm(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> str:
+def call_llm(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.5-flash") -> str:
     """
     Calls the LLM with a system and user prompt.
     Returns the text response.
@@ -35,10 +35,10 @@ def call_llm(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0
         return f"Error calling LLM: {str(e)}"
 
 # Alias for compatibility
-def generate_text(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> str:
+def generate_text(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.5-flash") -> str:
     return call_llm(system_prompt, user_prompt, model_name)
 
-def generate_json(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.0-flash") -> dict:
+def generate_json(system_prompt: str, user_prompt: str, model_name: str = "gemini-2.5-flash") -> dict:
     """
     Calls the LLM and expects a JSON response.
     """
