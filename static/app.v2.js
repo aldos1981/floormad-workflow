@@ -1319,7 +1319,8 @@ async function uploadPriceList() {
             showStatus('success', 'Upload Complete', data.message);
             // Refresh project to get new cache
             const pRes = await fetch('/api/projects');
-            const projects = await pRes.json();
+            const pData = await pRes.json();
+            const projects = Array.isArray(pData) ? pData : (pData.projects || []);
             const p = projects.find(x => x.id === currentProjectId);
             if (p) {
                 try {
