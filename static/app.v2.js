@@ -2264,6 +2264,16 @@ function showNodeConfig(id) {
                 <label class="block text-xs text-gray-400 mb-1">Footer HTML (signature, links, etc.)</label>
                 <textarea id="cfg-email-footer" rows="4" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder="<p>Cordiali saluti,<br>Nome Cognome</p>">${data.footer_html || ''}</textarea>
             </div>
+
+            <hr class="border-gray-700 my-4">
+            <div>
+                <button onclick="testEmailNode()" class="w-full flex items-center justify-center gap-2 bg-sky-600/20 text-sky-400 hover:bg-sky-600/40 border border-sky-600/50 rounded-lg py-2.5 text-sm font-medium transition">
+                    <span id="test-email-spinner" class="animate-spin hidden">⟳</span>
+                    🧪 Test Send Email
+                </button>
+                <p class="text-[10px] text-gray-500 mt-1.5 text-center">Uses last run data to send a real test email</p>
+                <div id="test-email-result" class="hidden mt-2 text-xs p-2 rounded border"></div>
+            </div>
     `;
     }
     else if (type === 'SEND_WHATSAPP') {
@@ -3656,6 +3666,104 @@ async function testEmail() {
         console.error("SMTP Test Error", e);
         showStatus('error', 'Test Failed', e.message);
         addSystemLog('error', 'SMTP Test Failed: ' + e.message);
+    }
+}
+
+// Test Email from SEND_EMAIL Node using last execution data
+async function testEmailNode() {
+    const resultDiv = document.getElementById('test-email-result');
+    const spinner = document.getElementById('test-email-spinner');
+
+    // Read current node config
+    const toField = document.getElementById('cfg-to')?.value || '';
+    const subject = document.getElementById('cfg-subj')?.value || '';
+    const bodyVar = document.getElementById('cfg-body')?.value || '';
+
+    // Resolve variables from last execution context
+    const ctx = lastExecutionResult?.final_context || {};
+
+    // Resolve {{var}} patterns
+    function resolveVars(template) {
+        if (!template) return template;
+        return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+            return ctx[varName] !== undefined ? String(ctx[varName]) : match;
+        });
+    }
+
+    let recipient = resolveVars(toField);
+    let resolvedSubject = resolveVars(subject);
+
+    // Get body from context variable
+    let emailBody = '';
+    if (bodyVar && ctx[bodyVar]) {
+        emailBody = ctx[bodyVar];
+    } else {
+        // Try common keys
+        for (const key of ['_html_rendered', 'content', 'html', 'email_body', 'html_content']) {
+            if (ctx[key] && typeof ctx[key] === 'string' && ctx[key].length > 10) {
+                emailBody = ctx[key];
+                break;
+            }
+        }
+    }
+
+    if (!recipient || !recipient.includes('@')) {
+        // Prompt for recipient
+        recipient = prompt('Inserisci email destinatario per il test:', recipient || '');
+        if (!recipient) return;
+    }
+
+    if (!emailBody) {
+        if (resultDiv) {
+            resultDiv.classList.remove('hidden', 'border-green-600', 'text-green-400', 'bg-green-900/20');
+            resultDiv.classList.add('border-yellow-600', 'text-yellow-400', 'bg-yellow-900/20');
+            resultDiv.textContent = '⚠️ Nessun contenuto email trovato. Esegui prima un Run del workflow.';
+        }
+        return;
+    }
+
+    // Show loading
+    if (spinner) spinner.classList.remove('hidden');
+    if (resultDiv) {
+        resultDiv.classList.remove('hidden');
+        resultDiv.className = 'mt-2 text-xs p-2 rounded border border-gray-600 text-gray-400 bg-gray-800';
+        resultDiv.textContent = '⏳ Sending test email...';
+    }
+
+    try {
+        const res = await fetch('/api/test/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                host: document.getElementById('int-smtp-host')?.value || '',
+                port: document.getElementById('int-smtp-port')?.value || '587',
+                user: document.getElementById('int-smtp-user')?.value || '',
+                password: document.getElementById('int-smtp-pass')?.value || '',
+                from_name: document.getElementById('int-smtp-from')?.value || 'Floormad',
+                to_email: recipient,
+                subject: resolvedSubject || 'Test Email from Workflow Node',
+                html_body: emailBody
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            if (resultDiv) {
+                resultDiv.className = 'mt-2 text-xs p-2 rounded border border-green-600 text-green-400 bg-green-900/20';
+                resultDiv.textContent = `✅ Email inviata a ${recipient}`;
+            }
+            showStatus('success', 'Test Email Sent', `Email sent to ${recipient}`);
+        } else {
+            throw new Error(data.message || 'Send failed');
+        }
+    } catch (e) {
+        if (resultDiv) {
+            resultDiv.className = 'mt-2 text-xs p-2 rounded border border-red-600 text-red-400 bg-red-900/20';
+            resultDiv.textContent = `❌ ${e.message}`;
+        }
+        showStatus('error', 'Test Failed', e.message);
+    } finally {
+        if (spinner) spinner.classList.add('hidden');
     }
 }
 
