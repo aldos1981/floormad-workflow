@@ -707,6 +707,10 @@ def get_google_creds(project_config):
     if sa_json and len(sa_json) > 10:
         try:
             info = json.loads(sa_json)
+            # Fix: private key newlines may be double-escaped in DB storage
+            if info.get('private_key') and '\\n' in info['private_key'] and '\n' not in info['private_key']:
+                info['private_key'] = info['private_key'].replace('\\n', '\n')
+                logger.info("[CREDS] Fixed double-escaped newlines in project SA private key")
             client_email = info.get('client_email', 'MISSING')
             has_private_key = bool(info.get('private_key'))
             pk_len = len(info.get('private_key', ''))
@@ -731,6 +735,10 @@ def get_google_creds(project_config):
         if row_sa and row_sa['value'] and len(row_sa['value']) > 10:
             try:
                 info = json.loads(row_sa['value'])
+                # Fix: private key newlines may be double-escaped in DB storage
+                if info.get('private_key') and '\\n' in info['private_key'] and '\n' not in info['private_key']:
+                    info['private_key'] = info['private_key'].replace('\\n', '\n')
+                    logger.info("[CREDS] Fixed double-escaped newlines in global SA private key")
                 client_email = info.get('client_email', 'MISSING')
                 has_private_key = bool(info.get('private_key'))
                 pk_len = len(info.get('private_key', ''))
