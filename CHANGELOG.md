@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.2.0] — 2026-03-06 12:22
+### 🐛 Fix Critico
+- **Spacebar Panning**: Riscritto completamente il sistema di panning con Space
+  - Overlay con background semi-trasparente (`rgba(0,0,0,0.001)`) per garantire cattura click
+  - Intercettore mousedown in fase CAPTURE che blocca Drawflow quando Space è premuto
+  - Nullificazione `editor.ele_selected` e `editor.node_selected` per cancellare drag attivi
+  - Fix regex double-escape in translate pattern
+### 🔧 Miglioramento
+- Bridge email: aggiunto `bridge_debug` nell'output per diagnostica SMTP step-by-step
+- Gestione redirect HTTP→HTTPS nel bridge call
+
 ## [3.1.1] — 2026-03-06 12:14
 ### 🐛 Debug
 - Aggiunto logging dettagliato alla chiamata bridge.php (HTTP status, response body, SMTP debug steps)

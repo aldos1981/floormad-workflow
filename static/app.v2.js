@@ -2631,7 +2631,8 @@ function initLassoSelect() {
     // Create invisible overlay for space/right-click/middle-click panning
     const panOverlay = document.createElement('div');
     panOverlay.id = 'pan-overlay';
-    panOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:none;cursor:grab;';
+    // IMPORTANT: rgba(0,0,0,0.001) ensures clicks are captured (fully transparent elements may not capture in some browsers)
+    panOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:none;cursor:grab;background:rgba(0,0,0,0.001);';
     document.body.appendChild(panOverlay);
     let isPanDragging = false;
     let isRightClickPanning = false;
@@ -2640,6 +2641,13 @@ function initLassoSelect() {
     // Override Drawflow's drag behavior after it processes mousedown
     // Drawflow sets editor.drag = true when dragging empty canvas — we turn it off
     container.addEventListener('mousedown', function (e) {
+        // If space is held, block ALL interactions with Drawflow
+        if (isSpacePanning) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+        }
         if (e.button === 0 && !e.target.closest('.drawflow-node') && !e.target.closest('.title-box')) {
             // Let Drawflow process the event normally (for node deselect etc.)
             // But after a microtask, disable its canvas drag
@@ -2649,7 +2657,7 @@ function initLassoSelect() {
                 }
             });
         }
-    });
+    }, true); // Use CAPTURE phase to intercept before Drawflow
 
     // --- RIGHT-CLICK & MIDDLE-CLICK PAN ---
     // Suppress context menu on EMPTY CANVAS only
@@ -2692,6 +2700,9 @@ function initLassoSelect() {
                 editor.editor_mode = 'fixed';
                 editor.drag = false;
                 editor.drag_point = false;
+                // Also cancel any current node drag
+                editor.ele_selected = null;
+                editor.node_selected = null;
             }
             // Force stop any active node drag
             document.querySelectorAll('.drawflow-node').forEach(n => {
@@ -2714,7 +2725,7 @@ function initLassoSelect() {
         }
     });
 
-    // Pan mousedown — on OVERLAY (for spacebar panning)
+    // Pan mousedown — on OVERLAY (for spacebar and right-click panning)
     panOverlay.addEventListener('mousedown', function (e) {
         e.preventDefault();
         e.stopPropagation();
