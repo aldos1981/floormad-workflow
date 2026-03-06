@@ -743,33 +743,43 @@ class WorkflowEngine:
         Executes the Send WhatsApp Node using WeSender.
         """
         from wesender_client import WeSenderClient
+        import time
         
         # 1. Resolve Inputs
         phone_field = config.get('phone_field', 'telefono')
         # Try to resolve phone from context/input
         phone = None
         
+        logger.info(f"[WhatsApp] phone_field config = '{phone_field}'")
+        logger.info(f"[WhatsApp] execution_context keys = {list(execution_context.keys()) if execution_context else 'None'}")
+        
         # Check if phone_field is actually a direct value (e.g. "+39...") or a variable
         resolved_phone_val = self._resolve_variables(phone_field, execution_context)
+        logger.info(f"[WhatsApp] resolved phone_field '{phone_field}' → '{resolved_phone_val}'")
         if resolved_phone_val and any(char.isdigit() for char in resolved_phone_val):
              phone = resolved_phone_val
         
         if not phone:
              # Look for the field name in context
              phone = self._resolve_variables(f"{{{{{phone_field}}}}}", execution_context)
+             logger.info(f"[WhatsApp] fallback resolve '{{{{{phone_field}}}}}' → '{phone}'")
              
         if not phone and isinstance(input_data, dict):
             phone = input_data.get(phone_field) or input_data.get('phone') or input_data.get('telefono')
+            logger.info(f"[WhatsApp] input_data fallback → '{phone}'")
             
         if not phone and execution_context:
              phone = execution_context.get(phone_field) or execution_context.get('phone') or execution_context.get('telefono')
+             logger.info(f"[WhatsApp] context fallback → '{phone}'")
 
         if not phone:
+            logger.warning("[WhatsApp] ❌ SKIPPED: No phone number found")
             return {"status": "skipped", "reason": "No phone number found"}
 
         # Message Body
         message_var = config.get('message_var', '')
         message = self._resolve_variables(message_var, execution_context)
+        logger.info(f"[WhatsApp] message_var config = '{message_var}' → resolved len={len(message) if message else 0}")
         
         if not message:
              # Fallback to input content
@@ -779,37 +789,59 @@ class WorkflowEngine:
                  message = input_data.get('message') or input_data.get('content') or input_data.get('text')
         
         if not message:
+            logger.warning("[WhatsApp] ❌ SKIPPED: No message content found")
             return {"status": "skipped", "reason": "No message content found"}
 
-        # 2. Get Config
+        # 2. Get Config — try project first, then global settings
         project = self.context.get('project')
         if not project:
              return {"error": "No project context"}
-             
+              
         wesendit_conf = project.get('wesendit_config')
-        if not wesendit_conf:
-             return {"error": "No WeSender configuration found in project"}
-             
         if isinstance(wesendit_conf, str):
             try:
                 import json
                 wesendit_conf = json.loads(wesendit_conf)
             except:
-                pass
+                wesendit_conf = {}
                 
+        if not wesendit_conf or not isinstance(wesendit_conf, dict):
+            wesendit_conf = {}
+            
         api_key = wesendit_conf.get('api_key')
-        api_url = wesendit_conf.get('api_url') # Optional override
+        api_url = wesendit_conf.get('api_url')
+        
+        # Fallback: check global settings
+        if not api_key:
+            try:
+                from database import get_db_connection
+                conn = get_db_connection()
+                row = conn.execute("SELECT value FROM settings WHERE key='wesendit_api_key'").fetchone()
+                if row and row['value']:
+                    api_key = row['value']
+                    logger.info("[WhatsApp] Using global WeSender API key")
+                conn.close()
+            except:
+                pass
         
         if not api_key:
-             return {"error": "Missing WeSender API Key"}
+            logger.error("[WhatsApp] ❌ ERROR: Missing WeSender API Key (not in project config or global settings)")
+            return {"error": "Missing WeSender API Key"}
 
-        # 3. Send
+        logger.info(f"[WhatsApp] ✅ Sending to {phone}, message_len={len(message)}, api_key_len={len(api_key)}")
+
+        # 3. Small delay to avoid API rate limiting
+        time.sleep(1)
+
+        # 4. Send
         client = WeSenderClient(api_key, api_url)
         result = client.send_message(phone, message)
         
         if result.get('success'):
+            logger.info(f"[WhatsApp] ✅ Message SENT to {phone}")
             return {"status": "sent", "recipient": phone, "api_response": result.get('data')}
         else:
+            logger.error(f"[WhatsApp] ❌ SEND FAILED to {phone}: {result.get('details')}")
             return {"status": "error", "error": result.get('details')}
 
 
