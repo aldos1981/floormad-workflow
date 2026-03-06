@@ -811,11 +811,17 @@ def restore_version(project_id: str, version_id: str):
 
 @app.delete("/api/projects/{project_id}")
 def delete_project(project_id: str):
-    conn = get_db_connection()
-    conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-    conn.commit()
-    conn.close()
-    return {"message": "Project deleted"}
+    try:
+        conn = get_db_connection()
+        # Delete related rows first (foreign key constraints in Postgres)
+        conn.execute("DELETE FROM runs WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM workflow_versions WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        conn.commit()
+        conn.close()
+        return {"message": "Project deleted"}
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 # --- PROJECT DUPLICATE ---
 @app.post("/api/projects/{project_id}/duplicate")

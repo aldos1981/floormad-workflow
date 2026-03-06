@@ -1170,9 +1170,10 @@ async function fetchProjects() {
                                 <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold">
                                     ${(p.name || '?').charAt(0).toUpperCase()}
                                 </div>
-                                <span class="px-2 py-1 ${p.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-gray-500/10 text-gray-400 border-gray-500/20'} text-xs rounded-full border">
-                                    ${p.status || 'Active'}
-                                </span>
+                                <label class="relative inline-flex items-center cursor-pointer" title="${p.status === 'active' ? 'Active — click to pause' : 'Paused — click to activate'}" onclick="event.stopPropagation(); toggleProjectStatus('${p.id}', '${p.status}')">
+                                    <div class="w-11 h-6 ${p.status === 'active' ? 'bg-green-500' : 'bg-gray-600'} rounded-full transition-colors duration-200"></div>
+                                    <div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${p.status === 'active' ? 'translate-x-5' : 'translate-x-0'}"></div>
+                                </label>
                             </div>
                             <h3 class="text-lg font-bold truncate text-white">${p.name || 'Unnamed'}</h3>
                             <p class="text-gray-400 text-sm mb-4 truncate">${p.description || 'No description'}</p>
@@ -1341,6 +1342,23 @@ async function uploadPriceList() {
 }
 
 let projectToDeleteId = null;
+
+async function toggleProjectStatus(projectId, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+    try {
+        const res = await fetch(`/api/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        if (!res.ok) throw new Error('Failed to update status');
+        await fetchProjects();
+        showStatus('success', newStatus === 'active' ? '▶️ Workflow Activated' : '⏸️ Workflow Paused',
+            newStatus === 'active' ? 'The workflow will now run on schedule.' : 'The workflow is paused and won\'t run automatically.');
+    } catch (e) {
+        showStatus('error', 'Status Update Failed', e.message);
+    }
+}
 
 function deleteProject(id) {
     projectToDeleteId = id;
