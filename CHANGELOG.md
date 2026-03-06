@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1] — 2026-03-06 14:40
+### ✨ Feature
+- **Test WhatsApp nel nodo**: Pulsante 🧪 nel nodo SEND_WHATSAPP
+  - Legge phone/message dal config nodo e risolve variabili dall'ultimo run
+  - Gestisce prefisso "p:" nel numero telefono
+  - Feedback inline con risultato successo/errore
+
 ## [3.3.0] — 2026-03-06 14:35
 ### ✨ Nuova Feature — Cron Scheduler Automatico
 - **Background Scheduler**: I workflow con trigger "Cron Schedule" ora partono automaticamente

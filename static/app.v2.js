@@ -2294,6 +2294,15 @@ function showNodeConfig(id) {
             </label>
             <input id="cfg-msg" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.message_var || 'ai_result'}">
         </div>
+        <hr class="border-gray-700 my-4">
+        <div>
+            <button onclick="testWhatsAppNode()" class="w-full flex items-center justify-center gap-2 bg-green-600/20 text-green-400 hover:bg-green-600/40 border border-green-600/50 rounded-lg py-2.5 text-sm font-medium transition">
+                <span id="test-wa-spinner" class="animate-spin hidden">⟳</span>
+                🧪 Test Send WhatsApp
+            </button>
+            <p class="text-[10px] text-gray-500 mt-1.5 text-center">Uses last run data to send a real test message</p>
+            <div id="test-wa-result" class="hidden mt-2 text-xs p-2 rounded border"></div>
+        </div>
     `;
     }
     else if (type === 'HTML_PREVIEW') {
@@ -3778,6 +3787,114 @@ async function testEmailNode() {
     }
 }
 
+// Test WhatsApp from SEND_WHATSAPP Node using last execution data
+async function testWhatsAppNode() {
+    const resultDiv = document.getElementById('test-wa-result');
+    const spinner = document.getElementById('test-wa-spinner');
+
+    // Read current node config
+    const phoneField = document.getElementById('cfg-phone')?.value || '';
+    const msgVar = document.getElementById('cfg-msg')?.value || '';
+
+    // Resolve variables from last execution context
+    const ctx = lastExecutionResult?.final_context || {};
+
+    function resolveVars(template) {
+        if (!template) return template;
+        return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+            return ctx[varName] !== undefined ? String(ctx[varName]) : match;
+        });
+    }
+
+    // Resolve phone number
+    let phone = resolveVars(phoneField);
+    // Clean phone: remove "p:" prefix if present
+    if (phone && phone.startsWith('p:')) phone = phone.substring(2);
+
+    // Resolve message
+    let message = '';
+    const cleanMsgVar = msgVar.replace(/\{\{|\}\}/g, '');
+    if (cleanMsgVar && ctx[cleanMsgVar]) {
+        const val = ctx[cleanMsgVar];
+        message = typeof val === 'string' ? val : JSON.stringify(val, null, 2);
+    }
+    if (!message) {
+        // Try common keys
+        for (const key of ['messaggio_whatsapp', 'message', 'whatsapp_message', 'text']) {
+            if (ctx[key] && typeof ctx[key] === 'string' && ctx[key].length > 5) {
+                message = ctx[key];
+                break;
+            }
+        }
+    }
+
+    if (!phone || !phone.match(/\+?\d{8,}/)) {
+        phone = prompt('Inserisci numero di telefono per il test (e.g. +39...):', phone || '');
+        if (!phone) return;
+    }
+
+    if (!message) {
+        if (resultDiv) {
+            resultDiv.classList.remove('hidden', 'border-green-600', 'text-green-400', 'bg-green-900/20');
+            resultDiv.classList.add('border-yellow-600', 'text-yellow-400', 'bg-yellow-900/20');
+            resultDiv.textContent = '⚠️ Nessun messaggio trovato. Esegui prima un Run del workflow.';
+        }
+        return;
+    }
+
+    // Get API key from Integrations tab
+    const apiKey = document.getElementById('int-wesender-key')?.value || '';
+    const apiUrl = document.getElementById('int-wesender-url')?.value || '';
+
+    if (!apiKey) {
+        if (resultDiv) {
+            resultDiv.classList.remove('hidden');
+            resultDiv.className = 'mt-2 text-xs p-2 rounded border border-yellow-600 text-yellow-400 bg-yellow-900/20';
+            resultDiv.textContent = '⚠️ Nessuna API Key WeSender configurata. Vai in Integrations (SMTP/WA).';
+        }
+        return;
+    }
+
+    // Show loading
+    if (spinner) spinner.classList.remove('hidden');
+    if (resultDiv) {
+        resultDiv.classList.remove('hidden');
+        resultDiv.className = 'mt-2 text-xs p-2 rounded border border-gray-600 text-gray-400 bg-gray-800';
+        resultDiv.textContent = '⏳ Sending WhatsApp test...';
+    }
+
+    try {
+        const res = await fetch('/api/test/whatsapp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                api_key: apiKey,
+                api_url: apiUrl || undefined,
+                phone: phone,
+                message: message
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            if (resultDiv) {
+                resultDiv.className = 'mt-2 text-xs p-2 rounded border border-green-600 text-green-400 bg-green-900/20';
+                resultDiv.textContent = `✅ WhatsApp inviato a ${phone}`;
+            }
+            showStatus('success', 'Test WhatsApp Sent', `Message sent to ${phone}`);
+        } else {
+            throw new Error(data.error || data.message || 'Send failed');
+        }
+    } catch (e) {
+        if (resultDiv) {
+            resultDiv.className = 'mt-2 text-xs p-2 rounded border border-red-600 text-red-400 bg-red-900/20';
+            resultDiv.textContent = `❌ ${e.message}`;
+        }
+        showStatus('error', 'Test Failed', e.message);
+    } finally {
+        if (spinner) spinner.classList.add('hidden');
+    }
+}
 async function testWhatsApp() {
     const apiKey = document.getElementById('int-wesender-key').value;
     const apiUrl = document.getElementById('int-wesender-url').value;
