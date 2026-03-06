@@ -43,3 +43,10 @@ dist_workflow_*.zip
 
 # API response dumps
 api_response.json
+
+# Backups (contain sensitive data)
+backups/
+backup_*.json
+
+# Migration scripts (contain credentials)
+migrate_to_pg.py
