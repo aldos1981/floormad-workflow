@@ -790,95 +790,58 @@ class EmailTestRequest(BaseModel):
 
 @app.post("/api/test/email")
 def test_email_endpoint(req: EmailTestRequest):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    import requests as http_requests
     
-    print(f"DEBUG: Testing Email with Host={req.host}, Port={req.port}, User={req.user}, To={req.to_email}")
-
+    BRIDGE_URL = "http://workflow.floormad.com/bridge.php"
+    
+    print(f"DEBUG: Testing Email via Bridge with Host={req.host}, Port={req.port}, User={req.user}")
+    
+    # Try via bridge first (works on Railway)
     try:
+        bridge_response = http_requests.post(BRIDGE_URL, json={
+            "action": "send_test_email",
+            "host": req.host,
+            "port": req.port,
+            "user": req.user,
+            "password": req.password,
+            "from_name": req.from_name,
+            "to_email": req.to_email or req.user
+        }, timeout=20)
+        
+        result = bridge_response.json()
+        if result.get("success"):
+            return {"success": True, "method": "bridge"}
+        else:
+            return JSONResponse({"success": False, "message": result.get("message", "Bridge error")}, status_code=500)
+    
+    except Exception as bridge_error:
+        print(f"DEBUG: Bridge failed ({bridge_error}), trying direct SMTP...")
+    
+    # Fallback: direct SMTP (works locally)
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
         msg = MIMEMultipart()
         msg['From'] = f"{req.from_name} <{req.user}>"
-        # Use provided recipient or default to self
         recipient = req.to_email if req.to_email else req.user
         msg['To'] = recipient
-        msg['Subject'] = "✅ Floormad Automation Manager - SMTP Configuration Test"
+        msg['Subject'] = "✅ Floormad - SMTP Test"
+        msg.attach(MIMEText("SMTP connection test successful!", 'plain'))
         
-        # HTML email body for better deliverability
-        html_body = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                .container {{ max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }}
-                .header {{ background-color: #4CAF50; color: white; padding: 10px 20px; border-radius: 5px; text-align: center; }}
-                .content {{ padding: 20px; }}
-                .footer {{ font-size: 12px; color: #666; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>✅ SMTP Connection Successful</h2>
-                </div>
-                <div class="content">
-                    <p>Hello,</p>
-                    <p>This is a <strong>test message</strong> from your <strong>Floormad Automation Manager</strong> to confirm that SMTP email configuration is working correctly.</p>
-                    <p><strong>Test Details:</strong></p>
-                    <ul>
-                        <li><strong>Recipient:</strong> {recipient}</li>
-                        <li><strong>From:</strong> {req.from_name} ({req.user})</li>
-                        <li><strong>Server:</strong> {req.host}:{req.port}</li>
-                    </ul>
-                    <p>If you received this email, your SMTP settings are configured correctly and ready to send automated workflow notifications.</p>
-                </div>
-                <div class="footer">
-                    <p>Sent by Floormad Automation Manager<br>
-                    This is an automated test message. Please do not reply to this email.</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        # Plain text fallback
-        text_body = f"""
-        ✅ SMTP Connection Successful
-        
-        Hello,
-        
-        This is a test message from your Floormad Automation Manager to confirm that SMTP email configuration is working correctly.
-        
-        Test Details:
-        - Recipient: {recipient}
-        - From: {req.from_name} ({req.user})
-        - Server: {req.host}:{req.port}
-        
-        If you received this email, your SMTP settings are configured correctly and ready to send automated workflow notifications.
-        
-        ---
-        Sent by Floormad Automation Manager
-        This is an automated test message. Please do not reply to this email.
-        """
-        
-        msg.attach(MIMEText(text_body, 'plain'))
-        msg.attach(MIMEText(html_body, 'html'))
-
-        # Check for Implicit SSL (Port 465)
         if int(req.port) == 465:
-            print("DEBUG: Using SMTP_SSL")
             server = smtplib.SMTP_SSL(req.host, req.port, timeout=10)
         else:
-            print(f"DEBUG: Using SMTP (STARTTLS) on {req.port}")
             server = smtplib.SMTP(req.host, req.port, timeout=10)
-            server.starttls() # Explicit TLS for 587/25
-            
-        server.login(req.user, req.password)  # Changed from req.pass_
+            server.starttls()
+        
+        server.login(req.user, req.password)
         server.send_message(msg)
         server.quit()
-        return {"success": True}
+        return {"success": True, "method": "direct"}
     except Exception as e:
-        print(f"DEBUG: SMTP Error: {e}")
+        print(f"DEBUG: Direct SMTP also failed: {e}")
         return JSONResponse({"success": False, "message": f"{type(e).__name__}: {str(e)}"}, status_code=500)
 
 
