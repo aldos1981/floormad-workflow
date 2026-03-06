@@ -1070,8 +1070,89 @@ def read_project_file(project_id: str, file: str):
     except Exception as e:
          raise HTTPException(status_code=500, detail=f"Error reading file: {e}")
 
+# --- DATABASE BACKUP & RESTORE ---
+from datetime import datetime as dt_backup
+
+@app.get("/api/backup")
+def download_backup():
+    """Download a full JSON backup of the database."""
+    conn = get_db_connection()
+    try:
+        projects = conn.execute("SELECT * FROM projects").fetchall()
+        settings_rows = conn.execute("SELECT * FROM settings").fetchall()
+        runs = conn.execute("SELECT * FROM runs").fetchall()
+        try:
+            versions = conn.execute("SELECT * FROM workflow_versions").fetchall()
+        except:
+            versions = []
+        conn.close()
+        
+        backup = {
+            "backup_date": dt_backup.now().isoformat(),
+            "projects": [dict(p) for p in projects],
+            "settings": [dict(s) for s in settings_rows],
+            "runs": [dict(r) for r in runs],
+            "workflow_versions": [dict(v) for v in versions]
+        }
+        
+        return JSONResponse(content=backup, headers={
+            "Content-Disposition": f"attachment; filename=floormad_backup_{dt_backup.now().strftime('%Y%m%d_%H%M%S')}.json"
+        })
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/backup/restore")
+async def restore_backup(file: UploadFile = File(...)):
+    """Restore database from a JSON backup file."""
+    try:
+        content = await file.read()
+        backup = json.loads(content)
+        conn = get_db_connection()
+        restored = {"projects": 0, "settings": 0, "runs": 0, "versions": 0}
+        
+        for s in backup.get("settings", []):
+            try:
+                conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (s['key'], s.get('value')))
+                restored["settings"] += 1
+            except: pass
+        
+        for p in backup.get("projects", []):
+            cols = ['id', 'name', 'description', 'status', 'google_sheet_id', 'service_account_json',
+                    'smtp_config', 'wesendit_config', 'cron_expression', 'price_list_url',
+                    'locality_prompt', 'products_config', 'workflow_json', 'oauth_credentials',
+                    'pipedrive_config', 'price_list_cache']
+            available_cols = [c for c in cols if c in p]
+            vals = [p.get(c, '' if c in ('google_sheet_id', 'service_account_json') else None) for c in available_cols]
+            placeholders = ', '.join(['?' for _ in available_cols])
+            try:
+                conn.execute(f"INSERT INTO projects ({', '.join(available_cols)}) VALUES ({placeholders})", tuple(vals))
+                restored["projects"] += 1
+            except: pass
+        
+        for r in backup.get("runs", []):
+            try:
+                conn.execute("INSERT INTO runs (id, project_id, timestamp, leads_processed, status, log_details) VALUES (?, ?, ?, ?, ?, ?)",
+                    (r['id'], r.get('project_id'), r.get('timestamp'), r.get('leads_processed', 0), r.get('status'), r.get('log_details')))
+                restored["runs"] += 1
+            except: pass
+        
+        for v in backup.get("workflow_versions", []):
+            try:
+                conn.execute("INSERT INTO workflow_versions (id, project_id, workflow_json, label, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (v['id'], v['project_id'], v['workflow_json'], v.get('label'), v.get('created_at')))
+                restored["versions"] += 1
+            except: pass
+        
+        conn.commit()
+        conn.close()
+        return {"success": True, "message": "Backup restored!", "restored": restored}
+    except Exception as e:
+        import traceback
+        return {"success": False, "message": str(e), "traceback": traceback.format_exc()}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     print(f"Starting server on 0.0.0.0:{port}")
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False) # Reload is for dev only
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
