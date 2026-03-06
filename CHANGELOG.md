@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.2] — 2026-03-06 15:10
+### 🐛 Fix Critico — Global Settings non salvati
+- **Duplicate Function**: Esistevano 3 copie di `saveGlobalSettings()` nel JS
+  - La versione corretta (service_account_json, api_key, sheet_id) era sovrascritta
+  - Le 2 copie duplicate salvavano solo client_id/secret → ignoravano il Service Account!
+  - Questo causava l'errore `Invalid JWT Signature` nel Price List Sync
+- **Fix**: Unificata in una sola funzione che salva TUTTI i campi
+- Rimosso script tag duplicato `app.v2.js?v=1.7` in index.html
+
 ## [3.3.1] — 2026-03-06 14:40
 ### ✨ Feature
 - **Test WhatsApp nel nodo**: Pulsante 🧪 nel nodo SEND_WHATSAPP

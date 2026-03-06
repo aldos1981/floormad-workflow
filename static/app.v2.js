@@ -1468,16 +1468,22 @@ async function testGeminiConnection() {
 }
 
 async function saveGlobalSettings() {
-    const btn = document.getElementById('save-settings-btn'); // Assuming a save button exists
-    const originalText = btn.innerText;
-    btn.innerText = "Saving...";
-    btn.disabled = true;
+    const btn = document.getElementById('save-settings-btn');
+    if (btn) {
+        btn.innerText = "Saving...";
+        btn.disabled = true;
+    }
 
     const payload = {
-        service_account_json: document.getElementById('g-sa-json').value,
-        google_api_key: document.getElementById('g-api-key').value,
-        default_sheet_id: document.getElementById('g-sheet-id').value
+        service_account_json: document.getElementById('g-sa-json')?.value || undefined,
+        google_api_key: document.getElementById('g-api-key')?.value || undefined,
+        default_sheet_id: document.getElementById('g-sheet-id')?.value || undefined,
+        google_client_id: document.getElementById('gs-client-id')?.value || undefined,
+        google_client_secret: document.getElementById('gs-client-secret')?.value || undefined
     };
+
+    // Remove undefined values so backend only updates provided fields
+    Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
 
     try {
         const res = await fetch('/api/settings', {
@@ -1496,8 +1502,10 @@ async function saveGlobalSettings() {
     } catch (e) {
         showStatus('error', 'Error', e.message);
     } finally {
-        btn.innerText = originalText;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = '💾 Save Settings';
+            btn.disabled = false;
+        }
     }
 }
 
@@ -3608,31 +3616,7 @@ async function openSettings() {
     }
 }
 
-async function saveGlobalSettings() {
-    const clientId = document.getElementById('gs-client-id').value;
-    const clientSecret = document.getElementById('gs-client-secret').value;
-
-    try {
-        const res = await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                google_client_id: clientId,
-                google_client_secret: clientSecret
-            })
-        });
-        const data = await res.json();
-        if (data.success) {
-            showStatus('success', 'Saved', 'Global settings updated');
-            document.getElementById('settings-modal').classList.add('hidden');
-            document.getElementById('settings-modal').classList.remove('flex');
-        } else {
-            throw new Error(data.message);
-        }
-    } catch (e) {
-        showStatus('error', 'Save Failed', e.message);
-    }
-}
+// saveGlobalSettings is defined once at the top — removed duplicate here
 
 function openChangelog() {
     document.getElementById('changelog-modal').classList.remove('hidden');
@@ -4483,31 +4467,7 @@ async function openSettings() {
     }
 }
 
-async function saveGlobalSettings() {
-    const clientId = document.getElementById('gs-client-id').value;
-    const clientSecret = document.getElementById('gs-client-secret').value;
-
-    try {
-        const res = await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                google_client_id: clientId,
-                google_client_secret: clientSecret
-            })
-        });
-        const data = await res.json();
-        if (data.success) {
-            showStatus('success', 'Saved', 'Global settings updated');
-            document.getElementById('settings-modal').classList.add('hidden');
-            document.getElementById('settings-modal').classList.remove('flex');
-        } else {
-            throw new Error(data.message);
-        }
-    } catch (e) {
-        showStatus('error', 'Save Failed', e.message);
-    }
-}
+// saveGlobalSettings is defined once at the top — removed duplicate here
 
 // Hook into openConfig (Global Override) to verify/init OAuth status
 // We need to wait for original function to be available if defined elsewhere, 
