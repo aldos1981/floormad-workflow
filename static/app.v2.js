@@ -1287,48 +1287,7 @@ function handleCreateProject(e) {
         });
 }
 
-async function uploadPriceList() {
-    if (!currentProjectId) return;
-    const fileInput = document.getElementById('price-upload-file');
-    const file = fileInput.files[0];
-
-    if (!file) {
-        showStatus('error', 'No File', 'Please select an Excel or CSV file first.');
-        return;
-    }
-
-    showStatus('loading', 'Uploading...', 'Parsing and caching price list...');
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const res = await fetch(`/api/projects/${currentProjectId}/upload-price-list`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-
-        if (data.success) {
-            showStatus('success', 'Upload Complete', data.message);
-            // Refresh project to get new cache
-            const pRes = await fetch('/api/projects');
-            const projects = await pRes.json();
-            const p = projects.find(x => x.id === currentProjectId);
-            if (p) {
-                try {
-                    currentPriceCache = p.price_list_cache ? JSON.parse(p.price_list_cache) : [];
-                } catch (e) {
-                    currentPriceCache = [];
-                }
-            }
-        } else {
-            showStatus('error', 'Upload Failed', data.message);
-        }
-    } catch (e) {
-        showStatus('error', 'Error', e.message);
-    }
-}
+// uploadPriceList — single definition below (removed duplicate without spinner)
 
 async function uploadPriceList() {
     if (!currentProjectId) return;
@@ -1514,10 +1473,21 @@ async function openSettings() {
         const res = await fetch('/api/settings');
         const settings = await res.json();
 
-        document.getElementById('g-sa-json').value = settings.service_account_json || '';
-        document.getElementById('g-api-key').value = settings.google_api_key || '';
-        document.getElementById('g-sheet-id').value = settings.default_sheet_id || '';
+        // Service Account + API Key fields
+        const elSaJson = document.getElementById('g-sa-json');
+        const elApiKey = document.getElementById('g-api-key');
+        const elSheetId = document.getElementById('g-sheet-id');
+        if (elSaJson) elSaJson.value = settings.service_account_json || '';
+        if (elApiKey) elApiKey.value = settings.google_api_key || '';
+        if (elSheetId) elSheetId.value = settings.default_sheet_id || '';
 
+        // OAuth Client ID/Secret fields
+        const elClientId = document.getElementById('gs-client-id');
+        const elClientSecret = document.getElementById('gs-client-secret');
+        if (elClientId) elClientId.value = settings.google_client_id || '';
+        if (elClientSecret) elClientSecret.value = settings.google_client_secret || '';
+
+        // Extract email for display
         extractEmail(settings.service_account_json || '', 'g-sa-email');
 
         document.getElementById('settings-modal').classList.remove('hidden');
@@ -3598,23 +3568,7 @@ async function fetchSystemInfo() {
     }
 }
 
-async function openSettings() {
-    const modal = document.getElementById('settings-modal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-
-    // Load Settings
-    try {
-        const res = await fetch('/api/settings');
-        const settings = await res.json();
-
-        document.getElementById('gs-client-id').value = settings.google_client_id || '';
-        document.getElementById('gs-client-secret').value = settings.google_client_secret || '';
-    } catch (e) {
-        console.error("Failed to load settings", e);
-        showStatus('error', 'Error', 'Failed to load global settings');
-    }
-}
+// openSettings is defined once at the top — removed duplicate here
 
 // saveGlobalSettings is defined once at the top — removed duplicate here
 
@@ -4447,25 +4401,7 @@ async function openDrivePicker(callback) {
 
 // --- SETTINGS LOGIC ---
 
-async function openSettings() {
-    const modal = document.getElementById('settings-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    }
-
-    try {
-        const res = await fetch('/api/settings');
-        const settings = await res.json();
-
-        const elId = document.getElementById('gs-client-id');
-        const elSecret = document.getElementById('gs-client-secret');
-        if (elId) elId.value = settings.google_client_id || '';
-        if (elSecret) elSecret.value = settings.google_client_secret || '';
-    } catch (e) {
-        console.error("Failed to load settings", e);
-    }
-}
+// openSettings is defined once at the top — removed duplicate here
 
 // saveGlobalSettings is defined once at the top — removed duplicate here
 

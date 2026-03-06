@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.4.0] — 2026-03-06 15:20
+### 🧹 Code Audit — Pulizia Codice
+- **Rimossi duplicati in app.v2.js**:
+  - `openSettings()` x3 → unificata in 1 (carica TUTTI i campi: SA, API key, Sheet ID + OAuth)
+  - `uploadPriceList()` x2 → unificata in 1 (versione con spinner UX)
+  - `saveGlobalSettings()` x3 → già unificata in v3.3.2
+- **Rimosso duplicato in main.py**:
+  - `read_root()` x2 → mantenuta la versione con `FileResponse`
+- Cache-busting aggiornato a v3.4.0
+
 ## [3.3.2] — 2026-03-06 15:10
 ### 🐛 Fix Critico — Global Settings non salvati
 - **Duplicate Function**: Esistevano 3 copie di `saveGlobalSettings()` nel JS

@@ -1043,12 +1043,7 @@ def test_pipedrive_endpoint(req: PipedriveTestRequest):
     except Exception as e:
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
-# Frontend Routes (served by StaticFiles, but redirect root)
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    with open("static/index.html") as f:
-        return f.read()
-
+# Duplicate read_root removed — defined at the top of the file
 @app.post("/api/projects/{project_id}/run")
 async def run_project_workflow(project_id: str):
     conn = get_db_connection()
