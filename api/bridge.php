@@ -172,11 +172,13 @@ function smtpSend($host, $port, $user, $password, $from_name, $from_email, $to, 
     $msg .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
     $msg .= "Date: " . date('r') . "\r\n\r\n";
     $msg .= "--{$boundary}\r\n";
-    $msg .= "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
-    $msg .= $plain_text . "\r\n\r\n";
+    $msg .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    $msg .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $msg .= chunk_split(base64_encode($plain_text)) . "\r\n";
     $msg .= "--{$boundary}\r\n";
-    $msg .= "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-    $msg .= $html_body . "\r\n\r\n";
+    $msg .= "Content-Type: text/html; charset=UTF-8\r\n";
+    $msg .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $msg .= chunk_split(base64_encode($html_body)) . "\r\n";
     $msg .= "--{$boundary}--\r\n.\r\n";
 
     fwrite($fp, $msg);

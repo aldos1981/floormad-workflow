@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1] — 2026-03-06 12:37
+### 🐛 Fix Critico — Email dal Workflow
+- **Bridge MIME Encoding**: L'HTML del preventivo (tabelle, €, ²) superava il limite SMTP di 998 char/riga
+  - Aggiunto `Content-Transfer-Encoding: base64` per text/plain e text/html
+  - `chunk_split(base64_encode(...))` split in righe da 76 caratteri
+  - Questo spiega perché il test (HTML breve) funzionava ma il workflow (HTML lungo) no
+
 ## [3.2.0] — 2026-03-06 12:22
 ### 🐛 Fix Critico
 - **Spacebar Panning**: Riscritto completamente il sistema di panning con Space
