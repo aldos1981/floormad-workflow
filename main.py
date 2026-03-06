@@ -122,11 +122,32 @@ def debug_db():
     """Temporary debug endpoint to check database connection."""
     from database import DATABASE_URL
     db_url = DATABASE_URL
-    return {
+    result = {
         "database_url_set": bool(db_url),
         "database_url_preview": (db_url[:30] + "...") if db_url else None,
         "mode": "PostgreSQL" if db_url else "SQLite"
     }
+    
+    try:
+        conn = get_db_connection()
+        # Test query
+        projects = conn.execute("SELECT id, name FROM projects").fetchall()
+        result["projects_count"] = len(projects)
+        result["projects"] = [dict(p) for p in projects]
+        
+        settings = conn.execute("SELECT key FROM settings").fetchall()
+        result["settings_count"] = len(settings)
+        result["settings_keys"] = [dict(s)['key'] for s in settings]
+        
+        conn.close()
+        result["connection"] = "OK"
+    except Exception as e:
+        import traceback
+        result["connection"] = "ERROR"
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+    
+    return result
 
 @app.get("/api/settings")
 def get_settings():
