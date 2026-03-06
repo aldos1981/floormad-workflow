@@ -39,7 +39,8 @@ switch ($action) {
         echo json_encode(['success' => false, 'message' => "Unknown action: {$action}"]);
 }
 
-function sendTestEmail($input) {
+function sendTestEmail($input)
+{
     $host = $input['host'] ?? '';
     $port = intval($input['port'] ?? 465);
     $user = $input['user'] ?? '';
@@ -78,7 +79,8 @@ function sendTestEmail($input) {
     return smtpSend($host, $port, $user, $password, $from_name, $user, $to_email, $subject, $html_body, $plain_text);
 }
 
-function sendEmail($input) {
+function sendEmail($input)
+{
     $host = $input['host'] ?? '';
     $port = intval($input['port'] ?? 465);
     $user = $input['user'] ?? '';
@@ -96,29 +98,36 @@ function sendEmail($input) {
     return smtpSend($host, $port, $user, $password, $from_name, $user, $to_email, $subject, $html_body, $plain_text);
 }
 
-function smtpSend($host, $port, $user, $password, $from_name, $from_email, $to, $subject, $html_body, $plain_text) {
+function smtpSend($host, $port, $user, $password, $from_name, $from_email, $to, $subject, $html_body, $plain_text)
+{
     $use_ssl = ($port == 465);
     $conn_host = $use_ssl ? "ssl://{$host}" : $host;
+    $debug = [];
 
     $fp = @fsockopen($conn_host, $port, $errno, $errstr, 20);
     if (!$fp) {
         return ['success' => false, 'message' => "Connection failed: {$errstr} ({$errno})"];
     }
 
-    smtpRead($fp);
+    $debug[] = "Connected to {$conn_host}:{$port}";
+    $resp = smtpRead($fp);
+    $debug[] = "GREETING: " . trim($resp);
+
     smtpWrite($fp, "EHLO {$host}");
-    smtpRead($fp);
+    $resp = smtpRead($fp);
+    $debug[] = "EHLO: " . trim(explode("\n", $resp)[0]);
 
     if (!$use_ssl && $port == 587) {
         smtpWrite($fp, "STARTTLS");
         $resp = smtpRead($fp);
         if (strpos($resp, '220') === false) {
             fclose($fp);
-            return ['success' => false, 'message' => "STARTTLS failed: {$resp}"];
+            return ['success' => false, 'message' => "STARTTLS failed: {$resp}", 'debug' => $debug];
         }
         stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
         smtpWrite($fp, "EHLO {$host}");
         smtpRead($fp);
+        $debug[] = "STARTTLS OK";
     }
 
     // Auth
@@ -130,15 +139,30 @@ function smtpSend($host, $port, $user, $password, $from_name, $from_email, $to, 
     $resp = smtpRead($fp);
     if (strpos($resp, '235') === false) {
         fclose($fp);
-        return ['success' => false, 'message' => "Auth failed: {$resp}"];
+        return ['success' => false, 'message' => "Auth failed: " . trim($resp), 'debug' => $debug];
     }
+    $debug[] = "AUTH OK";
 
     smtpWrite($fp, "MAIL FROM:<{$from_email}>");
-    smtpRead($fp);
+    $resp = smtpRead($fp);
+    if (strpos($resp, '250') === false) {
+        fclose($fp);
+        return ['success' => false, 'message' => "MAIL FROM rejected: " . trim($resp), 'debug' => $debug];
+    }
+
     smtpWrite($fp, "RCPT TO:<{$to}>");
-    smtpRead($fp);
+    $resp = smtpRead($fp);
+    if (strpos($resp, '250') === false) {
+        fclose($fp);
+        return ['success' => false, 'message' => "RCPT TO rejected: " . trim($resp), 'debug' => $debug];
+    }
+
     smtpWrite($fp, "DATA");
-    smtpRead($fp);
+    $resp = smtpRead($fp);
+    if (strpos($resp, '354') === false) {
+        fclose($fp);
+        return ['success' => false, 'message' => "DATA rejected: " . trim($resp), 'debug' => $debug];
+    }
 
     $boundary = md5(uniqid(time()));
     $msg = "To: {$to}\r\n";
@@ -156,22 +180,32 @@ function smtpSend($host, $port, $user, $password, $from_name, $from_email, $to, 
     $msg .= "--{$boundary}--\r\n.\r\n";
 
     fwrite($fp, $msg);
-    smtpRead($fp);
+    $resp = smtpRead($fp);
+    $debug[] = "DATA SEND: " . trim($resp);
+
+    if (strpos($resp, '250') === false) {
+        fclose($fp);
+        return ['success' => false, 'message' => "Message rejected: " . trim($resp), 'debug' => $debug];
+    }
+
     smtpWrite($fp, "QUIT");
     fclose($fp);
 
-    return ['success' => true, 'message' => 'Email sent successfully'];
+    return ['success' => true, 'message' => 'Email sent successfully', 'debug' => $debug];
 }
 
-function smtpWrite($fp, $cmd) {
+function smtpWrite($fp, $cmd)
+{
     fwrite($fp, $cmd . "\r\n");
 }
 
-function smtpRead($fp) {
+function smtpRead($fp)
+{
     $data = '';
     while ($line = fgets($fp, 512)) {
         $data .= $line;
-        if (substr($line, 3, 1) === ' ') break;
+        if (substr($line, 3, 1) === ' ')
+            break;
     }
     return $data;
 }

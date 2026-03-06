@@ -674,13 +674,41 @@ class WorkflowEngine:
         msg.attach(MIMEText(full_email_html, 'html'))
 
 
-        # 3. Send
+        # 3. Send — Try bridge first (Railway blocks SMTP), fallback to direct
+        host = smtp.get('host')
+        port = int(smtp.get('port', 587))
+        user = smtp.get('user')
+        password = smtp.get('pass') or smtp.get('password')
+        
+        BRIDGE_URL = "http://workflow.floormad.com/bridge.php"
+        
+        # 3a. Try via bridge (works on Railway)
         try:
-            host = smtp.get('host')
-            port = int(smtp.get('port', 587))
-            user = smtp.get('user')
-            password = smtp.get('pass') or smtp.get('password') # Handle both keys just in case
-
+            import requests as http_requests
+            bridge_response = http_requests.post(BRIDGE_URL, json={
+                "action": "send_email",
+                "host": host,
+                "port": port,
+                "user": user,
+                "password": password,
+                "from_name": from_name,
+                "to_email": recipient,
+                "subject": subject,
+                "html_body": full_email_html,
+                "plain_text": plain_text
+            }, timeout=30)
+            
+            result = bridge_response.json()
+            if result.get("success"):
+                logger.info(f"Email sent via bridge to {recipient}")
+                return {"status": "sent", "recipient": recipient, "method": "bridge"}
+            else:
+                logger.warning(f"Bridge email failed: {result.get('message')}, trying direct SMTP...")
+        except Exception as bridge_err:
+            logger.warning(f"Bridge unavailable ({bridge_err}), trying direct SMTP...")
+        
+        # 3b. Fallback: direct SMTP (works locally)
+        try:
             if port == 465:
                 server = smtplib.SMTP_SSL(host, port, timeout=20)
             else:
@@ -691,14 +719,11 @@ class WorkflowEngine:
             server.send_message(msg)
             server.quit()
             
-            logger.info("Email sent successfully.")
-            return {"status": "sent", "recipient": recipient}
+            logger.info(f"Email sent directly via SMTP to {recipient}")
+            return {"status": "sent", "recipient": recipient, "method": "direct"}
             
         except Exception as e:
             logger.error(f"SMTP Sending Error: {e}")
-            return {"error": str(e)}
-
-
             return {"error": str(e)}
 
     def execute_whatsapp(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
