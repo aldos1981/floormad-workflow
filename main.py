@@ -117,6 +117,17 @@ def get_system_info():
         
     return {"version": version, "changelog": changelog}
 
+@app.get("/api/debug/db")
+def debug_db():
+    """Temporary debug endpoint to check database connection."""
+    from database import DATABASE_URL
+    db_url = DATABASE_URL
+    return {
+        "database_url_set": bool(db_url),
+        "database_url_preview": (db_url[:30] + "...") if db_url else None,
+        "mode": "PostgreSQL" if db_url else "SQLite"
+    }
+
 @app.get("/api/settings")
 def get_settings():
     conn = get_db_connection()
