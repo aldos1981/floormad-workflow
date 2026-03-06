@@ -1,21 +1,48 @@
 # Changelog
 
+## [3.1.1] — 2026-03-06 12:14
+### 🐛 Debug
+- Aggiunto logging dettagliato alla chiamata bridge.php (HTTP status, response body, SMTP debug steps)
+- Gestione redirect HTTP→HTTPS che potrebbe perdere il body POST
+- L'output del nodo email ora include `bridge_debug` con i passi SMTP
+
+## [3.1.0] — 2026-03-06 12:11
+### ✨ Nuove Funzionalità
+- **Feedback Visuale Workflow**: Ogni nodo mostra spinner giallo + glow durante l'esecuzione
+- **Animazione Sequenziale**: I nodi si animano uno dopo l'altro con ✅ (successo) o ❌ (errore)
+- **Pulsante Test Email**: Aggiunto 🧪 "Test Send Email" nel pannello configurazione del nodo SEND_EMAIL
+  - Usa i dati dell'ultimo Run per inviare una email reale di test
+  - Risolve automaticamente le variabili {{...}} dal contesto di esecuzione
+### 🐛 Fix
+- **Spacebar Panning**: Fix per muovere l'intera canvas invece dei singoli nodi
+  - Aggiunto `pointer-events: none` su tutti i nodi durante space hold
+  - Disabilitati `editor.drag` e `editor.drag_point` durante il panning
+### 🎨 UI
+- Aggiornato cache-busting JS a `?v=3.1.0`
+- Aggiunte animazioni CSS `@keyframes spin` e `@keyframes popIn`
+
+## [3.0.0] — 2026-03-06
+### 🚀 Major Release
+- **SMTP Bridge**: Routing email tramite bridge.php su cPanel (Railway blocca SMTP diretto)
+- **Workflow Engine**: `execute_email` ora prova bridge.php → fallback a SMTP diretto
+- **Redirect**: Aggiunto index.html per redirect workflow.floormad.com → Railway
+
 ## [1.0.0] - 2024-05-22
 ### 🚀 Major Release
-- **Project Media Library**: Centralized file management (WordPress-style) for each project.
+- **Project Media Library**: Gestione file centralizzata (stile WordPress) per ogni progetto.
 - **Product Catalog 2.0**:
-    - **Dynamic Attributes**: customizable attributes (e.g. Color, Size) per product.
-    - **Knowledge Base**: Link PDF/Docs to products for AI processing.
-    - **AI Integration**: Auto-summarization of uploaded knowledge files.
+    - **Dynamic Attributes**: Attributi personalizzabili per prodotto.
+    - **Knowledge Base**: Link PDF/Docs per elaborazione AI.
+    - **AI Integration**: Auto-riasunto dei file knowledge caricati.
 - **Workflow Builder**:
-    - **Interaction Fixes**: Native drag-and-drop restored.
-    - **UI Toolbar**: Added "Save Workflow" and "Output" buttons.
-    - **AI Node**: Now supports Gemini 1.5 Pro and Dynamic Header insertion from Google Sheets.
+    - **Interaction Fixes**: Drag-and-drop nativo ripristinato.
+    - **UI Toolbar**: Aggiunti pulsanti "Save Workflow" e "Output".
+    - **AI Node**: Supporto Gemini 1.5 Pro e inserimento header dinamico da Google Sheets.
 - **System**:
-    - Improved Toast Notifications (non-clipping, auto-width).
-    - Database optimizations.
+    - Toast Notifications migliorati.
+    - Ottimizzazioni database.
 
 ## [0.5.0] - Beta
-- Initial Workflow Engine implementation.
-- Basic Google Sheets sync.
-- Trigger and Action nodes.
+- Implementazione iniziale Workflow Engine.
+- Sync base Google Sheets.
+- Nodi Trigger e Action.
