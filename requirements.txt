@@ -16,3 +16,4 @@ pdfplumber
 psycopg2-binary
 croniter
 pandas
+xhtml2pdf

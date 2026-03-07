@@ -272,6 +272,8 @@ class WorkflowEngine:
             return self.execute_delay(config, input_data)
         elif node_type == "HTTP_REQUEST":
             return self.execute_http_request(config, input_data, execution_context)
+        elif node_type == "GENERATE_PDF":
+            return self.execute_generate_pdf(config, input_data, execution_context)
         elif node_type == "NOTE":
             # NOTE is display-only, just pass through
             return input_data
@@ -1380,3 +1382,114 @@ class WorkflowEngine:
         else:
             logger.info(f"[FILTER] ❌ Conditions not met — data filtered out")
             return {"_status": "filtered", "reason": "Filter conditions not met", "results": rule_results}
+
+    def execute_generate_pdf(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
+        """
+        GENERATE_PDF Node — Converts HTML content to a professional PDF file.
+        
+        Config:
+            source_var: variable containing HTML content (e.g., 'body_email')
+            filename_pattern: PDF filename template (supports {{variables}})
+        """
+        import os
+        import uuid
+        from datetime import datetime
+        
+        source_var = config.get('source_var', 'body_email')
+        filename_pattern = config.get('filename_pattern', 'preventivo_{{preventivo_numero}}')
+        
+        # Resolve HTML content from context
+        html_content = ''
+        if execution_context:
+            html_content = execution_context.get(source_var, '')
+            if not html_content:
+                for key in ['body_email', 'html_content', 'testo_tecnico', 'content', 'email_body']:
+                    if key in execution_context and execution_context[key]:
+                        html_content = str(execution_context[key])
+                        break
+        
+        if not html_content:
+            logger.warning("[PDF] No HTML content found to convert")
+            return {"error": "No HTML content found", "source_var": source_var}
+        
+        # Resolve and sanitize filename
+        filename = self._resolve_variables(filename_pattern, execution_context) if execution_context else filename_pattern
+        filename = re.sub(r'[^\w\-.]', '_', filename)
+        if not filename.endswith('.pdf'):
+            filename += '.pdf'
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"{filename.replace('.pdf', '')}_{unique_id}.pdf"
+        
+        logger.info(f"[PDF] Generating: {filename} from '{source_var}'")
+        
+        # Split by <!--DIVIDER--> if present
+        parts = html_content.split('<!--DIVIDER-->')
+        parte_tecnica = parts[0] if parts else html_content
+        parte_emozionale = parts[1] if len(parts) > 1 else ''
+        
+        # Get context values for header
+        nome = execution_context.get('nome', '') if execution_context else ''
+        prev_num = execution_context.get('preventivo_numero', '') if execution_context else ''
+        data_req = execution_context.get('data_richiesta', '') if execution_context else ''
+        
+        pdf_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+@page {{ size: A4; margin: 2cm 2.5cm; }}
+body {{ font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #333; line-height: 1.6; }}
+.header {{ background-color: #056837; color: white; padding: 20px 25px; margin: -2cm -2.5cm 20px -2.5cm; text-align: center; }}
+.header h1 {{ margin: 0; font-size: 28px; letter-spacing: 2px; }}
+.header .sub {{ font-size: 14px; opacity: 0.9; margin-top: 5px; }}
+.meta {{ background-color: #f5f5f5; padding: 12px 15px; border-left: 4px solid #056837; margin-bottom: 20px; font-size: 11px; }}
+h2, h3 {{ color: #056837; }}
+table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+th, td {{ border: 1px solid #ddd; padding: 8px 10px; font-size: 11px; }}
+th {{ background-color: #f1f1f1; font-weight: bold; }}
+hr.div {{ border: none; border-top: 2px solid #056837; margin: 30px 0; }}
+p {{ margin: 8px 0; }}
+b {{ color: #222; }}
+.footer {{ text-align: center; font-size: 9px; color: #999; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 40px; }}
+</style></head><body>
+<div class="header"><h1>AGRILOCK</h1><div class="sub">Preventivo N. {prev_num}</div></div>
+<div class="meta"><strong>Cliente:</strong> {nome} &nbsp;|&nbsp; <strong>Data:</strong> {data_req} &nbsp;|&nbsp; <strong>Ref:</strong> {prev_num}</div>
+<div>{parte_tecnica}</div>
+{'<hr class="div">' if parte_emozionale else ''}
+<div>{parte_emozionale}</div>
+<div class="footer">AGRILOCK — Preventivo generato automaticamente</div>
+</body></html>"""
+        
+        try:
+            from xhtml2pdf import pisa
+            from io import BytesIO
+            
+            pdf_dir = os.path.join(os.getcwd(), 'uploads', 'pdf')
+            os.makedirs(pdf_dir, exist_ok=True)
+            pdf_path = os.path.join(pdf_dir, filename)
+            
+            buf = BytesIO()
+            status = pisa.CreatePDF(pdf_html, dest=buf, encoding='utf-8')
+            
+            if status.err:
+                logger.error(f"[PDF] Failed: {status.err} errors")
+                return {"error": f"PDF generation failed: {status.err} errors"}
+            
+            with open(pdf_path, 'wb') as f:
+                f.write(buf.getvalue())
+            
+            fsize = os.path.getsize(pdf_path)
+            logger.info(f"[PDF] ✅ Generated: {filename} ({fsize:,} bytes)")
+            
+            return {
+                "pdf_filename": filename,
+                "pdf_path": pdf_path,
+                "pdf_url": f"/uploads/pdf/{filename}",
+                "pdf_size": fsize,
+                "status": "success"
+            }
+        except ImportError:
+            logger.error("[PDF] xhtml2pdf not installed")
+            return {"error": "xhtml2pdf not installed — add to requirements.txt"}
+        except Exception as e:
+            logger.error(f"[PDF] Error: {e}")
+            return {"error": str(e)}
+

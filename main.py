@@ -31,6 +31,11 @@ app.add_middleware(
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Mount uploads/pdf for generated PDF downloads
+import pathlib
+pathlib.Path("uploads/pdf").mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Models
 class ProjectCreate(BaseModel):
     name: str

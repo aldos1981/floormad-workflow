@@ -1966,6 +1966,15 @@ function addNodeToTheCanvas(type, pos_x, pos_y) {
                 </div>
             </div>`;
         inputs = 1; outputs = 1;
+    } else if (safeType === 'GENERATE_PDF') {
+        html = `
+            <div class="node-content pdf-node" style="border-color:#ef4444;">
+                <div class="title-box" style="background:linear-gradient(135deg,#b91c1c,#ef4444);">📎 Generate PDF</div>
+                <div class="box">
+                    <p>HTML → PDF</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
     } else if (safeType === 'LOOP') {
         html = `
             <div class="node-content loop-node" style="border-color:#22c55e;">
@@ -2205,7 +2214,7 @@ function showNodeConfig(id) {
                     const cid = "${id}";
                     if(!currentProjectId) return;
                     try {
-                        const res = await fetch(\`/api/projects/\${currentProjectId}/headers\`);
+                        const res = await fetch(`/api/projects/${currentProjectId}/headers`);
                         const json = await res.json();
                         const container = document.getElementById('headers-container-sys');
                         if(json.success && json.headers && container) {
@@ -2622,6 +2631,26 @@ function showNodeConfig(id) {
         </div>
     `;
     }
+    else if (type === 'GENERATE_PDF') {
+        content.innerHTML = nodeNameField(`PDF_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Converts HTML content to a professional PDF file with Agrilock branding.</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Source Variable (HTML content)</label>
+            <div class="flex gap-2">
+                <input id="cfg-pdf-source" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.source_var || 'body_email'}" placeholder="body_email">
+                ${renderVarPicker('cfg-pdf-source')}
+            </div>
+            <p class="text-[10px] text-gray-600 mt-1">Variable containing the HTML to convert to PDF</p>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Filename Pattern</label>
+            <div class="flex gap-2">
+                <input id="cfg-pdf-filename" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.filename_pattern || 'preventivo_{{preventivo_numero}}'}" placeholder="preventivo_{{preventivo_numero}}">
+                ${renderVarPicker('cfg-pdf-filename')}
+            </div>
+        </div>
+    `;
+    }
 
     // Attach sheet link updater for GOOGLE_SHEET nodes
     const sheetIdInput = document.getElementById('cfg-sheet-id');
@@ -2791,6 +2820,10 @@ function saveNodeConfig() {
     else if (type === 'LOOP') {
         data.source_var = document.getElementById('cfg-loop-source')?.value || '';
         data.max_iterations = parseInt(document.getElementById('cfg-loop-max')?.value || '10');
+    }
+    else if (type === 'GENERATE_PDF') {
+        data.source_var = document.getElementById('cfg-pdf-source')?.value || 'body_email';
+        data.filename_pattern = document.getElementById('cfg-pdf-filename')?.value || 'preventivo_{{preventivo_numero}}';
     }
 
     // Update Drawflow Data
