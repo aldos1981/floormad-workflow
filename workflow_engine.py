@@ -64,6 +64,20 @@ class WorkflowEngine:
                 next_ids.append(conn["node"])
         return next_ids
 
+    def get_next_nodes_by_output(self, node_id: str) -> Dict[str, List[str]]:
+        """Returns connections grouped by output port name (e.g., output_1, output_2).
+        Used for conditional branching in CONDITION nodes."""
+        node = self.nodes.get(node_id)
+        if not node:
+            return {}
+        
+        result = {}
+        outputs = node.get("outputs", {})
+        for output_name, output_data in outputs.items():
+            connections = output_data.get("connections", [])
+            result[output_name] = [conn["node"] for conn in connections]
+        return result
+
     async def run(self, status_callback=None):
         """
         Main execution loop. Starts at Trigger and traverses the graph.
@@ -195,9 +209,31 @@ class WorkflowEngine:
                 return {"status": "failed", "log": self.execution_log, "final_context": accumulated_context}
 
             # Propagate to next nodes — pass accumulated context as input
-            next_nodes = self.get_next_nodes(current_node_id)
-            for next_id in next_nodes:
-                queue.append((next_id, accumulated_context))
+            node_type = node.get("name")
+            
+            if node_type == "CONDITION" and isinstance(output_data, dict) and "_branch" in output_data:
+                # CONDITIONAL ROUTING: only follow the matching output branch
+                branch = output_data["_branch"]  # "output_1" (TRUE) or "output_2" (FALSE)
+                outputs_by_port = self.get_next_nodes_by_output(current_node_id)
+                branch_nodes = outputs_by_port.get(branch, [])
+                other_branch = "output_2" if branch == "output_1" else "output_1"
+                skipped_nodes = outputs_by_port.get(other_branch, [])
+                
+                logger.info(f"[CONDITION] Branch '{branch}' → executing {len(branch_nodes)} nodes, skipping {len(skipped_nodes)} nodes")
+                
+                for next_id in branch_nodes:
+                    queue.append((next_id, accumulated_context))
+                
+                # Mark skipped branch nodes
+                for skip_id in skipped_nodes:
+                    skip_node = self.nodes.get(skip_id)
+                    if skip_node and status_callback:
+                        await status_callback(skip_id, "skipped", f"Condition was {output_data.get('result', '?')}")
+            else:
+                # Normal flow: send to all connected outputs
+                next_nodes = self.get_next_nodes(current_node_id)
+                for next_id in next_nodes:
+                    queue.append((next_id, accumulated_context))
 
         return {"status": "completed", "log": self.execution_log, "final_context": accumulated_context}
 
@@ -230,6 +266,20 @@ class WorkflowEngine:
             return input_data
         elif node_type == "PIPEDRIVE":
             return self.execute_pipedrive(config, input_data, execution_context)
+        elif node_type == "CONDITION":
+            return self.execute_condition(config, input_data, execution_context)
+        elif node_type == "DELAY":
+            return self.execute_delay(config, input_data)
+        elif node_type == "HTTP_REQUEST":
+            return self.execute_http_request(config, input_data, execution_context)
+        elif node_type == "NOTE":
+            # NOTE is display-only, just pass through
+            return input_data
+        elif node_type == "FILTER":
+            return self.execute_filter(config, input_data, execution_context)
+        elif node_type == "LOOP":
+            # LOOP is handled specially in the run() method, pass through here
+            return input_data
         else:
             # Pass-through for unknown nodes
             return input_data
@@ -1087,3 +1137,246 @@ class WorkflowEngine:
                 
         return result_text
 
+
+    # ═══════════════════════════════════════════════
+    # NEW NODES: CONDITION, DELAY, HTTP_REQUEST, FILTER
+    # ═══════════════════════════════════════════════
+
+    def execute_condition(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
+        """
+        IF/ELSE Conditional Node.
+        Evaluates a condition and returns _branch = 'output_1' (TRUE) or 'output_2' (FALSE).
+        The BFS loop uses this to route to the correct output.
+        
+        Config:
+            field: variable name to check (e.g., '{{mq}}' or 'mq')
+            operator: 'equals', 'not_equals', 'contains', 'not_contains', 'greater_than', 'less_than', 'is_empty', 'is_not_empty', 'regex'
+            value: comparison value
+        """
+        field_raw = config.get('field', '')
+        operator = config.get('operator', 'is_not_empty')
+        compare_value = config.get('value', '')
+        
+        # Resolve the field value from context
+        field_value = self._resolve_variables(field_raw, execution_context) if execution_context else field_raw
+        
+        # Also resolve compare value in case it contains variables
+        compare_value = self._resolve_variables(str(compare_value), execution_context) if execution_context and compare_value else compare_value
+        
+        logger.info(f"[CONDITION] field='{field_raw}' → '{field_value}', operator='{operator}', compare='{compare_value}'")
+        
+        result = False
+        
+        try:
+            if operator == 'equals':
+                result = str(field_value).strip().lower() == str(compare_value).strip().lower()
+            elif operator == 'not_equals':
+                result = str(field_value).strip().lower() != str(compare_value).strip().lower()
+            elif operator == 'contains':
+                result = str(compare_value).lower() in str(field_value).lower()
+            elif operator == 'not_contains':
+                result = str(compare_value).lower() not in str(field_value).lower()
+            elif operator == 'greater_than':
+                result = float(str(field_value).replace(',', '.')) > float(str(compare_value).replace(',', '.'))
+            elif operator == 'less_than':
+                result = float(str(field_value).replace(',', '.')) < float(str(compare_value).replace(',', '.'))
+            elif operator == 'greater_equal':
+                result = float(str(field_value).replace(',', '.')) >= float(str(compare_value).replace(',', '.'))
+            elif operator == 'less_equal':
+                result = float(str(field_value).replace(',', '.')) <= float(str(compare_value).replace(',', '.'))
+            elif operator == 'is_empty':
+                result = not field_value or str(field_value).strip() == '' or str(field_value).strip().lower() in ['none', 'null', 'undefined']
+            elif operator == 'is_not_empty':
+                result = field_value and str(field_value).strip() != '' and str(field_value).strip().lower() not in ['none', 'null', 'undefined']
+            elif operator == 'starts_with':
+                result = str(field_value).lower().startswith(str(compare_value).lower())
+            elif operator == 'ends_with':
+                result = str(field_value).lower().endswith(str(compare_value).lower())
+            elif operator == 'regex':
+                import re as regex_mod
+                result = bool(regex_mod.search(str(compare_value), str(field_value)))
+        except (ValueError, TypeError) as e:
+            logger.warning(f"[CONDITION] Evaluation error: {e}")
+            result = False
+        
+        branch = "output_1" if result else "output_2"
+        logger.info(f"[CONDITION] Result: {result} → branch: {branch}")
+        
+        return {
+            "_branch": branch,
+            "result": result,
+            "field": field_raw,
+            "field_value": str(field_value),
+            "operator": operator,
+            "compare_value": str(compare_value)
+        }
+
+    def execute_delay(self, config: Dict[str, Any], input_data: Any) -> Any:
+        """
+        DELAY Node — pauses execution for a configurable duration.
+        
+        Config:
+            delay_seconds: number of seconds to wait (default: 1)
+        """
+        import time
+        
+        delay = config.get('delay_seconds', 1)
+        try:
+            delay = float(delay)
+        except:
+            delay = 1.0
+        
+        # Cap at 300 seconds (5 minutes) for safety
+        delay = min(delay, 300)
+        
+        logger.info(f"[DELAY] Waiting {delay} seconds...")
+        time.sleep(delay)
+        logger.info(f"[DELAY] Wait complete.")
+        
+        return input_data  # Pass through
+
+    def execute_http_request(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
+        """
+        HTTP_REQUEST Node — makes external HTTP API calls.
+        
+        Config:
+            url: target URL (supports {{variables}})
+            method: GET, POST, PUT, DELETE, PATCH (default: GET)
+            headers: JSON string of headers
+            body: request body (supports {{variables}})
+            body_type: 'json' or 'form' (default: json)
+            output_var: variable name to store response
+        """
+        import requests
+        
+        url = config.get('url', '')
+        method = config.get('method', 'GET').upper()
+        headers_raw = config.get('headers', '{}')
+        body_raw = config.get('body', '')
+        body_type = config.get('body_type', 'json')
+        
+        # Resolve variables in URL and body
+        if execution_context:
+            url = self._resolve_variables(url, execution_context)
+            body_raw = self._resolve_variables(body_raw, execution_context)
+        
+        if not url:
+            return {"error": "No URL configured"}
+        
+        logger.info(f"[HTTP_REQUEST] {method} {url}")
+        
+        # Parse headers
+        headers = {}
+        try:
+            if headers_raw and headers_raw.strip():
+                import json as json_mod
+                headers = json_mod.loads(headers_raw) if isinstance(headers_raw, str) else headers_raw
+        except:
+            pass
+        
+        # Make request
+        try:
+            kwargs = {"headers": headers, "timeout": 30}
+            
+            if method in ('POST', 'PUT', 'PATCH') and body_raw:
+                if body_type == 'json':
+                    try:
+                        import json as json_mod
+                        kwargs["json"] = json_mod.loads(body_raw) if isinstance(body_raw, str) else body_raw
+                    except:
+                        kwargs["data"] = body_raw
+                else:
+                    kwargs["data"] = body_raw
+            
+            response = requests.request(method, url, **kwargs)
+            
+            # Try to parse response as JSON
+            try:
+                response_data = response.json()
+            except:
+                response_data = response.text
+            
+            logger.info(f"[HTTP_REQUEST] Response: {response.status_code}")
+            
+            return {
+                "status_code": response.status_code,
+                "response": response_data,
+                "url": url,
+                "method": method
+            }
+            
+        except Exception as e:
+            logger.error(f"[HTTP_REQUEST] Error: {e}")
+            return {"error": str(e), "url": url}
+
+    def execute_filter(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
+        """
+        FILTER Node — filters data based on rules. If all conditions pass, data flows through.
+        If conditions fail, returns _status: 'filtered' and the workflow continues but downstream 
+        nodes can check for this status.
+        
+        Config:
+            rules: list of {field, operator, value} conditions
+            logic: 'AND' (all must match) or 'OR' (any must match)
+        """
+        import json as json_mod
+        
+        rules_raw = config.get('rules', '[]')
+        logic = config.get('logic', 'AND').upper()
+        
+        try:
+            rules = json_mod.loads(rules_raw) if isinstance(rules_raw, str) else rules_raw
+        except:
+            rules = []
+        
+        if not rules:
+            return input_data  # No rules = pass everything through
+        
+        logger.info(f"[FILTER] Evaluating {len(rules)} rules with logic '{logic}'")
+        
+        rule_results = []
+        for rule in rules:
+            field = rule.get('field', '')
+            operator = rule.get('operator', 'is_not_empty')
+            value = rule.get('value', '')
+            
+            # Resolve field value
+            field_value = self._resolve_variables(field, execution_context) if execution_context else field
+            
+            # Evaluate using same logic as CONDITION
+            passed = False
+            try:
+                if operator == 'equals':
+                    passed = str(field_value).strip().lower() == str(value).strip().lower()
+                elif operator == 'not_equals':
+                    passed = str(field_value).strip().lower() != str(value).strip().lower()
+                elif operator == 'contains':
+                    passed = str(value).lower() in str(field_value).lower()
+                elif operator == 'not_contains':
+                    passed = str(value).lower() not in str(field_value).lower()
+                elif operator == 'greater_than':
+                    passed = float(str(field_value).replace(',', '.')) > float(str(value).replace(',', '.'))
+                elif operator == 'less_than':
+                    passed = float(str(field_value).replace(',', '.')) < float(str(value).replace(',', '.'))
+                elif operator == 'is_empty':
+                    passed = not field_value or str(field_value).strip() in ['', 'None', 'null']
+                elif operator == 'is_not_empty':
+                    passed = field_value and str(field_value).strip() not in ['', 'None', 'null']
+            except:
+                passed = False
+            
+            rule_results.append(passed)
+            logger.info(f"[FILTER] Rule: '{field}' {operator} '{value}' → {passed}")
+        
+        # Apply logic
+        if logic == 'AND':
+            all_passed = all(rule_results)
+        else:
+            all_passed = any(rule_results)
+        
+        if all_passed:
+            logger.info(f"[FILTER] ✅ All conditions passed — data flows through")
+            return input_data
+        else:
+            logger.info(f"[FILTER] ❌ Conditions not met — data filtered out")
+            return {"_status": "filtered", "reason": "Filter conditions not met", "results": rule_results}

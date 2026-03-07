@@ -1920,6 +1920,61 @@ function addNodeToTheCanvas(type, pos_x, pos_y) {
                 </div>
             </div>`;
         inputs = 1; outputs = 1;
+    } else if (safeType === 'CONDITION') {
+        html = `
+            <div class="node-content condition-node" style="border-color:#f59e0b;">
+                <div class="title-box" style="background:linear-gradient(135deg,#d97706,#f59e0b);">🔀 IF / ELSE</div>
+                <div class="box">
+                    <p style="font-size:10px;">✅ TRUE → Out 1</p>
+                    <p style="font-size:10px;">❌ FALSE → Out 2</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 2;
+    } else if (safeType === 'DELAY') {
+        html = `
+            <div class="node-content delay-node" style="border-color:#3b82f6;">
+                <div class="title-box" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6);">⏱️ Delay</div>
+                <div class="box">
+                    <p>Wait X sec</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'HTTP_REQUEST') {
+        html = `
+            <div class="node-content http-node" style="border-color:#a855f7;">
+                <div class="title-box" style="background:linear-gradient(135deg,#7e22ce,#a855f7);">🌐 HTTP Request</div>
+                <div class="box">
+                    <p>API Call</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'NOTE') {
+        html = `
+            <div class="node-content note-node" style="border-color:#facc15;background:rgba(250,204,21,0.08);">
+                <div class="title-box" style="background:linear-gradient(135deg,#a16207,#ca8a04);">📝 Note</div>
+                <div class="box">
+                    <p style="font-size:10px;color:#fbbf24;">Click to edit</p>
+                </div>
+            </div>`;
+        inputs = 0; outputs = 0;
+    } else if (safeType === 'FILTER') {
+        html = `
+            <div class="node-content filter-node" style="border-color:#06b6d4;">
+                <div class="title-box" style="background:linear-gradient(135deg,#0e7490,#06b6d4);">📊 Filter</div>
+                <div class="box">
+                    <p>Filter Data</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
+    } else if (safeType === 'LOOP') {
+        html = `
+            <div class="node-content loop-node" style="border-color:#22c55e;">
+                <div class="title-box" style="background:linear-gradient(135deg,#15803d,#22c55e);">🔄 Loop</div>
+                <div class="box">
+                    <p>For Each Row</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
     } else {
         console.warn("Unknown Node Type:", type);
         html = `<div class="node-content unknown-node bg-red-900/50 border border-red-500 rounded p-2">
@@ -2441,6 +2496,132 @@ function showNodeConfig(id) {
         </div>
     `;
     }
+    // --- NEW NODES CONFIG PANELS ---
+    else if (type === 'CONDITION') {
+        const operators = [
+            ['equals', '= Equals'], ['not_equals', '≠ Not Equals'],
+            ['contains', '∋ Contains'], ['not_contains', '∌ Not Contains'],
+            ['greater_than', '> Greater Than'], ['less_than', '< Less Than'],
+            ['greater_equal', '≥ Greater Equal'], ['less_equal', '≤ Less Equal'],
+            ['is_empty', '∅ Is Empty'], ['is_not_empty', '✓ Is Not Empty'],
+            ['starts_with', 'Starts With'], ['ends_with', 'Ends With'],
+            ['regex', '~ Regex Match']
+        ];
+        const opOptions = operators.map(([val, label]) =>
+            `<option value="${val}" ${(data.operator || 'is_not_empty') === val ? 'selected' : ''}>${label}</option>`
+        ).join('');
+
+        content.innerHTML = nodeNameField(`Condition_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Evaluates a condition. Output 1 = TRUE ✅, Output 2 = FALSE ❌</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Field to Check</label>
+            <div class="flex gap-2">
+                <input id="cfg-cond-field" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.field || ''}" placeholder="{{email}} or {{mq}}">
+                ${renderVarPicker('cfg-cond-field')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Operator</label>
+            <select id="cfg-cond-operator" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs">
+                ${opOptions}
+            </select>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Compare Value</label>
+            <div class="flex gap-2">
+                <input id="cfg-cond-value" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.value || ''}" placeholder="e.g. 100, active, @gmail.com">
+                ${renderVarPicker('cfg-cond-value')}
+            </div>
+            <p class="text-[10px] text-gray-600 mt-1">Leave empty for is_empty / is_not_empty operators</p>
+        </div>
+    `;
+    }
+    else if (type === 'DELAY') {
+        content.innerHTML = nodeNameField(`Delay_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Pauses the workflow execution for a set duration.</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Delay (seconds)</label>
+            <input id="cfg-delay-seconds" type="number" min="0.5" max="300" step="0.5" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.delay_seconds || 1}">
+            <p class="text-[10px] text-gray-600 mt-1">Max: 300 seconds (5 minutes)</p>
+        </div>
+    `;
+    }
+    else if (type === 'HTTP_REQUEST') {
+        content.innerHTML = nodeNameField(`HTTP_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Makes an external HTTP API call. Variables ({{...}}) supported.</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Method</label>
+            <select id="cfg-http-method" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs">
+                <option value="GET" ${(data.method || 'GET') === 'GET' ? 'selected' : ''}>GET</option>
+                <option value="POST" ${data.method === 'POST' ? 'selected' : ''}>POST</option>
+                <option value="PUT" ${data.method === 'PUT' ? 'selected' : ''}>PUT</option>
+                <option value="PATCH" ${data.method === 'PATCH' ? 'selected' : ''}>PATCH</option>
+                <option value="DELETE" ${data.method === 'DELETE' ? 'selected' : ''}>DELETE</option>
+            </select>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">URL</label>
+            <div class="flex gap-2">
+                <input id="cfg-http-url" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.url || ''}" placeholder="https://api.example.com/endpoint">
+                ${renderVarPicker('cfg-http-url')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Headers (JSON)</label>
+            <textarea id="cfg-http-headers" rows="2" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder='{"Authorization": "Bearer ..."}'>${data.headers || '{}'}</textarea>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Body</label>
+            <textarea id="cfg-http-body" rows="3" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder='{"name": "{{nome}}"}'>${data.body || ''}</textarea>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Output Variable</label>
+            <input id="cfg-http-output" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.output_var || 'http_response'}">
+        </div>
+    `;
+    }
+    else if (type === 'NOTE') {
+        content.innerHTML = `
+        <div>
+            <label class="block text-xs text-yellow-400 font-bold mb-1">📝 Note</label>
+            <textarea id="cfg-note-text" rows="5" class="w-full bg-gray-800 border border-yellow-600/50 rounded p-2 text-yellow-100 text-xs" placeholder="Write your note here...">${data.note_text || ''}</textarea>
+            <p class="text-[10px] text-gray-600 mt-1">This node doesn't execute anything — just a visual note.</p>
+        </div>
+    `;
+    }
+    else if (type === 'FILTER') {
+        content.innerHTML = nodeNameField(`Filter_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">Stops the workflow if conditions are NOT met. Data passes through if ALL/ANY rules match.</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Logic</label>
+            <select id="cfg-filter-logic" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs">
+                <option value="AND" ${(data.logic || 'AND') === 'AND' ? 'selected' : ''}>AND — All rules must match</option>
+                <option value="OR" ${data.logic === 'OR' ? 'selected' : ''}>OR — Any rule matches</option>
+            </select>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Rules (JSON array)</label>
+            <textarea id="cfg-filter-rules" rows="5" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" placeholder='[{"field":"{{email}}","operator":"is_not_empty","value":""}]'>${typeof data.rules === 'string' ? data.rules : JSON.stringify(data.rules || [], null, 2)}</textarea>
+            <p class="text-[10px] text-gray-600 mt-1">Operators: equals, not_equals, contains, is_empty, is_not_empty, greater_than, less_than</p>
+        </div>
+    `;
+    }
+    else if (type === 'LOOP') {
+        content.innerHTML = nodeNameField(`Loop_${id}`) + `
+        <p class="text-[10px] text-gray-500 mb-3">⚠️ Coming soon — will iterate over rows from a data source.</p>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Source Variable</label>
+            <div class="flex gap-2">
+                <input id="cfg-loop-source" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.source_var || ''}" placeholder="{{rows}}">
+                ${renderVarPicker('cfg-loop-source')}
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="block text-xs text-gray-400 mb-1">Max Iterations</label>
+            <input id="cfg-loop-max" type="number" min="1" max="100" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs" value="${data.max_iterations || 10}">
+        </div>
+    `;
+    }
 
     // Attach sheet link updater for GOOGLE_SHEET nodes
     const sheetIdInput = document.getElementById('cfg-sheet-id');
@@ -2583,6 +2764,33 @@ function saveNodeConfig() {
         data.phone_field = document.getElementById('cfg-pd-phone')?.value || '{{telefono}}';
         data.address_field = document.getElementById('cfg-pd-address')?.value || '';
         data.notes_field = document.getElementById('cfg-pd-notes')?.value || '';
+    }
+    // --- NEW NODES SAVE ---
+    else if (type === 'CONDITION') {
+        data.field = document.getElementById('cfg-cond-field')?.value || '';
+        data.operator = document.getElementById('cfg-cond-operator')?.value || 'is_not_empty';
+        data.value = document.getElementById('cfg-cond-value')?.value || '';
+    }
+    else if (type === 'DELAY') {
+        data.delay_seconds = parseFloat(document.getElementById('cfg-delay-seconds')?.value || '1');
+    }
+    else if (type === 'HTTP_REQUEST') {
+        data.method = document.getElementById('cfg-http-method')?.value || 'GET';
+        data.url = document.getElementById('cfg-http-url')?.value || '';
+        data.headers = document.getElementById('cfg-http-headers')?.value || '{}';
+        data.body = document.getElementById('cfg-http-body')?.value || '';
+        data.output_var = document.getElementById('cfg-http-output')?.value || 'http_response';
+    }
+    else if (type === 'NOTE') {
+        data.note_text = document.getElementById('cfg-note-text')?.value || '';
+    }
+    else if (type === 'FILTER') {
+        data.logic = document.getElementById('cfg-filter-logic')?.value || 'AND';
+        data.rules = document.getElementById('cfg-filter-rules')?.value || '[]';
+    }
+    else if (type === 'LOOP') {
+        data.source_var = document.getElementById('cfg-loop-source')?.value || '';
+        data.max_iterations = parseInt(document.getElementById('cfg-loop-max')?.value || '10');
     }
 
     // Update Drawflow Data
