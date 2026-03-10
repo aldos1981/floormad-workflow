@@ -506,7 +506,7 @@ class WorkflowEngine:
         """
         
         logger.info("Calling Gemini API...")
-        model_name = config.get('model', 'gemini-2.5-flash')
+        model_name = config.get('model', 'gemini-3-flash-preview')
         # Map specific UI values to API models if needed, or use directly
         logger.info(f"Calling Gemini API with model: {model_name}")
         
