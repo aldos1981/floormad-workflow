@@ -2182,7 +2182,8 @@ function showNodeConfig(id) {
                 <select id="cfg-model" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs outline-none focus:border-blue-500 mb-2">
                     <option value="gemini-2.5-flash" ${data.model === 'gemini-2.5-flash' || !data.model ? 'selected' : ''}>⚡ Gemini 2.5 Flash (Consigliato)</option>
                     <option value="gemini-2.0-flash" ${data.model === 'gemini-2.0-flash' ? 'selected' : ''}>Gemini 2.0 Flash (Stabile)</option>
-                    <option value="gemini-2.0-flash-lite" ${data.model === 'gemini-2.0-flash-lite' ? 'selected' : ''}>💰 Gemini 2.0 Flash Lite (Economico)</option>
+                    <option value="gemini-2.0-flash-lite" ${data.model === 'gemini-2.0-flash-lite' ? 'selected' : ''}>💰 Gemini 2.0 Flash Lite (Ultra Economico)</option>
+                    <option value="gemini-3-flash-preview" ${data.model === 'gemini-3-flash-preview' ? 'selected' : ''}>🆕 Gemini 3 Flash Preview (Nuovo)</option>
                 </select>
 
                 <label class="block text-xs text-gray-400 mb-1">System Instruction</label>
