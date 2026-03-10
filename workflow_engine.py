@@ -272,6 +272,8 @@ class WorkflowEngine:
             return self.execute_delay(config, input_data)
         elif node_type == "HTTP_REQUEST":
             return self.execute_http_request(config, input_data, execution_context)
+        elif node_type == "GENERATE_PDF":
+            return self.execute_generate_pdf(config, input_data, execution_context)
         elif node_type == "NOTE":
             # NOTE is display-only, just pass through
             return input_data
@@ -610,21 +612,6 @@ class WorkflowEngine:
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
         from email.utils import formatdate, make_msgid
-
-        # Resolve Subject, Body, AND RECIPIENT
-        subject = self._resolve_variables(config.get('subject', 'Preventivo Agrilock'), execution_context)
-        
-        # ... (lines 823-905 skipped for brevity in replacement, sticking to block) ...
-        # I need to be careful with the context. let's just replace the block where msg is created.
-        
-        # ... actually, I should just modify the block where msg is created.
-        
-        # Let's target the definition of execute_email to include imports if needed, 
-        # or just add them inside the method since it has local imports.
-        
-        # Redoing the plan: I will replace the block starting from `msg = MIMEMultipart()` 
-        # but I also need the imports. The imports are at the top of the method.
-
 
         # Resolve Subject, Body, AND RECIPIENT
         subject = self._resolve_variables(config.get('subject', 'Preventivo Agrilock'), execution_context)
@@ -1380,3 +1367,244 @@ class WorkflowEngine:
         else:
             logger.info(f"[FILTER] ❌ Conditions not met — data filtered out")
             return {"_status": "filtered", "reason": "Filter conditions not met", "results": rule_results}
+
+    # --- GENERATE_PDF NODE ---
+    def execute_generate_pdf(self, config: Dict[str, Any], input_data: Any, execution_context: Dict[str, Any] = None) -> Any:
+        """
+        GENERATE_PDF Node — Converts HTML/text content to a PDF file using reportlab.
+        
+        Saves the PDF to uploads/pdf/ and returns:
+            - pdf_filename: the file name
+            - pdf_url:      relative path  (/uploads/pdf/filename.pdf)
+            - pdf_link:     full public URL (BASE_URL env var + pdf_url)
+            - pdf_size:     size in bytes
+        
+        Use {{pdf_link}} in subsequent WhatsApp/Email nodes.
+        """
+        import os
+        import uuid
+        import re as re_module
+        from datetime import datetime
+        from io import BytesIO
+        from html.parser import HTMLParser
+
+        logger.info("[PDF] GENERATE_PDF node executing")
+
+        # --- 1. Get HTML content from context ---
+        source_var = config.get('source_var', 'body_email')
+        filename_pattern = config.get('filename_pattern', 'documento_{{n_preventivo}}')
+
+        html_content = ''
+        if execution_context:
+            html_content = execution_context.get(source_var, '')
+            if not html_content:
+                for key in ['body_email', 'html_content', 'content', '_html_rendered', 'email_body', 'testo_tecnico']:
+                    if key in execution_context and execution_context[key]:
+                        html_content = str(execution_context[key])
+                        logger.info(f"[PDF] Auto-resolved HTML from context key: '{key}'")
+                        break
+
+        if not html_content and isinstance(input_data, dict):
+            html_content = input_data.get('content') or input_data.get('html') or ''
+        elif not html_content and isinstance(input_data, str):
+            html_content = input_data
+
+        if not html_content:
+            logger.warning("[PDF] No HTML content found to convert")
+            return {"error": "No HTML content found", "source_var": source_var}
+
+        # --- 2. Resolve filename ---
+        filename = self._resolve_variables(filename_pattern, execution_context) if execution_context else filename_pattern
+        filename = re_module.sub(r'[^\w\-.]', '_', filename)
+        if not filename.endswith('.pdf'):
+            filename += '.pdf'
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"{filename.replace('.pdf', '')}_{unique_id}.pdf"
+
+        # --- 3. Strip HTML tags for plain text extraction ---
+        class _HTMLStripper(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text_parts = []
+                self.skip_tags = {'style', 'script', 'head'}
+                self._skip = False
+
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() in self.skip_tags:
+                    self._skip = True
+                if tag.lower() in ('br', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'li', 'tr'):
+                    self.text_parts.append('\n')
+
+            def handle_endtag(self, tag):
+                if tag.lower() in self.skip_tags:
+                    self._skip = False
+
+            def handle_data(self, data):
+                if not self._skip:
+                    self.text_parts.append(data)
+
+        stripper = _HTMLStripper()
+        stripper.feed(html_content)
+        plain_text = ''.join(stripper.text_parts)
+        # Collapse excessive blank lines
+        plain_text = re_module.sub(r'\n{3,}', '\n\n', plain_text).strip()
+
+        # --- 4. Generate PDF with reportlab ---
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import cm
+            from reportlab.lib import colors
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+            # --- Setup output path ---
+            base_dir = os.getcwd()
+            pdf_dir = os.path.join(base_dir, 'uploads', 'pdf')
+            os.makedirs(pdf_dir, exist_ok=True)
+            pdf_path = os.path.join(pdf_dir, filename)
+
+            # --- Document setup ---
+            buf = BytesIO()
+            doc = SimpleDocTemplate(
+                buf,
+                pagesize=A4,
+                rightMargin=2*cm,
+                leftMargin=2*cm,
+                topMargin=2.5*cm,
+                bottomMargin=2*cm
+            )
+
+            # --- Styles ---
+            styles = getSampleStyleSheet()
+            style_normal = ParagraphStyle(
+                'CustomNormal',
+                parent=styles['Normal'],
+                fontSize=10,
+                leading=15,
+                textColor=colors.HexColor('#333333'),
+                spaceAfter=6,
+            )
+            style_h1 = ParagraphStyle(
+                'CustomH1',
+                parent=styles['Heading1'],
+                fontSize=18,
+                textColor=colors.HexColor('#056837'),
+                spaceAfter=12,
+                spaceBefore=16,
+            )
+            style_h2 = ParagraphStyle(
+                'CustomH2',
+                parent=styles['Heading2'],
+                fontSize=13,
+                textColor=colors.HexColor('#056837'),
+                spaceAfter=8,
+                spaceBefore=12,
+            )
+            style_small = ParagraphStyle(
+                'Small',
+                parent=styles['Normal'],
+                fontSize=8,
+                textColor=colors.HexColor('#888888'),
+            )
+            style_label = ParagraphStyle(
+                'Label',
+                parent=styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#056837'),
+                fontName='Helvetica-Bold',
+            )
+
+            # --- Header ---
+            project = self.context.get('project', {}) if self.context else {}
+            project_name = project.get('name', 'Floormad') if project else 'Floormad'
+            nome = execution_context.get('nome', '') if execution_context else ''
+            prev_num = execution_context.get('n_preventivo', execution_context.get('preventivo_numero', '')) if execution_context else ''
+            data_req = execution_context.get('data_richiesta', datetime.now().strftime('%d/%m/%Y')) if execution_context else datetime.now().strftime('%d/%m/%Y')
+
+            story = []
+
+            # Header band (simulated with a colored table)
+            header_data = [[
+                Paragraph(f"<font color='white' size=16><b>{project_name.upper()}</b></font>", style_normal),
+                Paragraph(f"<font color='white' size=10>Preventivo N. {prev_num} &nbsp;|&nbsp; Data: {data_req}</font>", style_normal),
+            ]]
+            header_table = Table(header_data, colWidths=[9*cm, 8*cm])
+            header_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#056837')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+                ('PADDING', (0, 0), (-1, -1), 12),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(header_table)
+            story.append(Spacer(1, 0.5*cm))
+
+            # Client info row if available
+            if nome:
+                info_data = [[Paragraph(f"<b>Cliente:</b> {nome}", style_normal)]]
+                info_table = Table(info_data, colWidths=[17*cm])
+                info_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f0f7f0')),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#cce5cc')),
+                ]))
+                story.append(info_table)
+                story.append(Spacer(1, 0.3*cm))
+
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#056837'), spaceAfter=0.3*cm))
+
+            # --- Content: parse plain_text into paragraphs ---
+            lines = plain_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    story.append(Spacer(1, 0.2*cm))
+                    continue
+                # Detect heading-like lines (all caps or starts with numbers)
+                if len(line) < 80 and line.isupper() and len(line) > 3:
+                    story.append(Paragraph(line, style_h2))
+                elif line.startswith('•') or line.startswith('-') or line.startswith('*'):
+                    story.append(Paragraph(f"&nbsp;&nbsp;{line}", style_normal))
+                else:
+                    # Sanitize for reportlab XML
+                    line_safe = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    story.append(Paragraph(line_safe, style_normal))
+
+            # --- Footer ---
+            story.append(Spacer(1, 0.5*cm))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=0.2*cm))
+            story.append(Paragraph("Documento generato automaticamente da Floormad Workflow Engine", style_small))
+
+            # --- Build PDF ---
+            doc.build(story)
+
+            pdf_bytes = buf.getvalue()
+            with open(pdf_path, 'wb') as f:
+                f.write(pdf_bytes)
+
+            fsize = len(pdf_bytes)
+
+            # --- 5. Build public URL ---
+            base_url = os.environ.get('BASE_URL', '').rstrip('/')
+            pdf_url = f"/uploads/pdf/{filename}"
+            pdf_link = f"{base_url}{pdf_url}" if base_url else pdf_url
+
+            logger.info(f"[PDF] ✅ Generated: {filename} ({fsize:,} bytes) → {pdf_link}")
+
+            return {
+                "pdf_filename": filename,
+                "pdf_url": pdf_url,
+                "pdf_link": pdf_link,
+                "pdf_size": fsize,
+                "status": "success"
+            }
+
+        except ImportError:
+            logger.error("[PDF] ❌ reportlab not installed — add to requirements.txt")
+            return {"error": "reportlab not installed — add to requirements.txt"}
+        except Exception as e:
+            logger.error(f"[PDF] ❌ Error: {e}")
+            import traceback
+            return {"error": str(e), "trace": traceback.format_exc()}

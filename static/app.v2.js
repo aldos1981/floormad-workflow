@@ -1975,6 +1975,15 @@ function addNodeToTheCanvas(type, pos_x, pos_y) {
                 </div>
             </div>`;
         inputs = 1; outputs = 1;
+    } else if (safeType === 'GENERATE_PDF') {
+        html = `
+            <div class="node-content pdf-node" style="border-color:#f43f5e;">
+                <div class="title-box" style="background:linear-gradient(135deg,#be123c,#f43f5e);">📄 Generate PDF</div>
+                <div class="box">
+                    <p>HTML → PDF Link</p>
+                </div>
+            </div>`;
+        inputs = 1; outputs = 1;
     } else {
         console.warn("Unknown Node Type:", type);
         html = `<div class="node-content unknown-node bg-red-900/50 border border-red-500 rounded p-2">
@@ -2171,9 +2180,9 @@ function showNodeConfig(id) {
         <div>
                 <label class="block text-xs text-gray-400 mb-1">Model Version</label>
                 <select id="cfg-model" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs outline-none focus:border-blue-500 mb-2">
-                    <option value="gemini-3-flash-preview" ${data.model === 'gemini-3-flash-preview' || !data.model ? 'selected' : ''}>Gemini 3 Flash (Fast)</option>
-                    <option value="gemini-3-pro-preview" ${data.model === 'gemini-3-pro-preview' ? 'selected' : ''}>Gemini 3 Pro (Powerful)</option>
-                    <option value="gemini-2.0-flash" ${data.model === 'gemini-2.0-flash' ? 'selected' : ''}>Gemini 2.0 Flash (Legacy)</option>
+                    <option value="gemini-2.5-flash" ${data.model === 'gemini-2.5-flash' || !data.model ? 'selected' : ''}>⚡ Gemini 2.5 Flash (Consigliato)</option>
+                    <option value="gemini-2.0-flash" ${data.model === 'gemini-2.0-flash' ? 'selected' : ''}>Gemini 2.0 Flash (Stabile)</option>
+                    <option value="gemini-2.0-flash-lite" ${data.model === 'gemini-2.0-flash-lite' ? 'selected' : ''}>💰 Gemini 2.0 Flash Lite (Economico)</option>
                 </select>
 
                 <label class="block text-xs text-gray-400 mb-1">System Instruction</label>
@@ -2622,6 +2631,38 @@ function showNodeConfig(id) {
         </div>
     `;
     }
+    else if (type === 'GENERATE_PDF') {
+        content.innerHTML = nodeNameField(`GeneratePDF_${id}`) + `
+        <div class="bg-rose-900/20 border border-rose-700/50 rounded-lg p-3 mb-4">
+            <p class="text-[11px] text-rose-300 font-medium">📄 HTML → PDF</p>
+            <p class="text-[10px] text-gray-400 mt-1">Converte HTML in PDF, lo salva e restituisce <code class="bg-gray-800 px-1 rounded">{{pdf_link}}</code> per WhatsApp/Email.</p>
+        </div>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Source Variable (contiene l'HTML)</label>
+            <div class="flex gap-2">
+                <input id="cfg-pdf-src" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.source_var || 'body_email'}" placeholder="body_email">
+                ${renderJsonPicker('cfg-pdf-src')}
+            </div>
+            <p class="text-[10px] text-gray-500 mt-1">La variabile del contesto che contiene l'HTML da convertire in PDF</p>
+        </div>
+        <div class="mt-3">
+            <label class="block text-xs text-gray-400 mb-1">Filename Pattern</label>
+            <div class="flex gap-2">
+                <input id="cfg-pdf-filename" type="text" class="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs font-mono" value="${data.filename_pattern || 'preventivo_{{n_preventivo}}'}" placeholder="preventivo_{{n_preventivo}}">
+                ${renderVarPicker('cfg-pdf-filename')}
+            </div>
+            <p class="text-[10px] text-gray-500 mt-1">Supporta variabili {{...}}. Il suffisso .pdf è aggiunto automaticamente</p>
+        </div>
+        <div class="mt-4 bg-gray-900/50 border border-gray-700 rounded p-3">
+            <p class="text-[11px] text-gray-300 font-medium mb-2">📤 Output disponibili nei nodi successivi:</p>
+            <div class="space-y-1">
+                <div class="flex items-center gap-2"><code class="bg-gray-800 text-rose-300 px-1.5 py-0.5 rounded text-[10px]">{{pdf_link}}</code><span class="text-[10px] text-gray-400">URL completo pubblico (per WA/Email)</span></div>
+                <div class="flex items-center gap-2"><code class="bg-gray-800 text-rose-300 px-1.5 py-0.5 rounded text-[10px]">{{pdf_url}}</code><span class="text-[10px] text-gray-400">Path relativo (/uploads/pdf/...)</span></div>
+                <div class="flex items-center gap-2"><code class="bg-gray-800 text-rose-300 px-1.5 py-0.5 rounded text-[10px]">{{pdf_filename}}</code><span class="text-[10px] text-gray-400">Nome file</span></div>
+            </div>
+        </div>
+    `;
+    }
 
     // Attach sheet link updater for GOOGLE_SHEET nodes
     const sheetIdInput = document.getElementById('cfg-sheet-id');
@@ -2791,6 +2832,10 @@ function saveNodeConfig() {
     else if (type === 'LOOP') {
         data.source_var = document.getElementById('cfg-loop-source')?.value || '';
         data.max_iterations = parseInt(document.getElementById('cfg-loop-max')?.value || '10');
+    }
+    else if (type === 'GENERATE_PDF') {
+        data.source_var = document.getElementById('cfg-pdf-src')?.value || 'body_email';
+        data.filename_pattern = document.getElementById('cfg-pdf-filename')?.value || 'preventivo_{{n_preventivo}}';
     }
 
     // Update Drawflow Data
